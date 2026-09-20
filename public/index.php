@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 use App\Core\Auth;
+use App\Core\Config;
 
 $user = Auth::user();
 if ($user) {
@@ -8,7 +9,7 @@ if ($user) {
     header('Location: ' . $target);
     exit;
 }
-if (!file_exists(__DIR__ . '/../config/config.php')) {
+if (!file_exists(__DIR__ . '/../config/config.php') && !Config::hasRuntimeConfig()) {
     header('Location: /install/');
     exit;
 }

@@ -16,27 +16,41 @@ class Database
         }
 
         $config = Config::get('db');
-        self::$driver = $config['driver'];
+        self::$driver = strtolower((string)($config['driver'] ?? 'mysql'));
 
         try {
-            if ($config['driver'] === 'sqlite') {
-                $dsn = 'sqlite:' . $config['sqlite_path'];
+            if (self::$driver === 'sqlite') {
+                $dsn = 'sqlite:' . ($config['sqlite_path'] ?? __DIR__ . '/../storage/database.sqlite');
                 $pdo = new PDO($dsn);
                 $pdo->exec('PRAGMA foreign_keys = ON');
             } else {
+                $host = $config['host'] ?? '127.0.0.1';
+                $port = (int)($config['port'] ?? 3306);
+                $database = $config['database'] ?? '';
+                $username = $config['username'] ?? '';
+                $password = $config['password'] ?? '';
+
+                if ($database === '') {
+                    throw new PDOException('Database name is missing. Check DB_NAME or DATABASE_URL.');
+                }
+
                 $dsn = sprintf(
                     'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-                    $config['host'],
-                    $config['port'] ?? 3306,
-                    $config['database']
+                    $host,
+                    $port,
+                    $database
                 );
-                $pdo = new PDO($dsn, $config['username'], $config['password']);
+                $pdo = new PDO($dsn, $username, $password, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]);
             }
+
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             http_response_code(500);
-            die(json_encode(['error' => 'Database connection failed. Please check config/config.php.']));
+            die(json_encode(['error' => 'Database connection failed. Check your database settings or Railway environment variables.']));
         }
 
         self::$instance = $pdo;

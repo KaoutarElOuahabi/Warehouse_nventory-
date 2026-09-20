@@ -11,6 +11,17 @@ namespace App\Core;
  */
 class Auth
 {
+    private static function isSecureRequest(): bool
+    {
+        $https = $_SERVER['HTTPS'] ?? '';
+        $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+        $scheme = $_SERVER['HTTP_X_FORWARDED_SCHEME'] ?? '';
+        return (!empty($https) && strtolower($https) !== 'off')
+            || strtolower((string)$proto) === 'https'
+            || strtolower((string)$scheme) === 'https'
+            || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
+    }
+
     public static function start(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
@@ -20,7 +31,7 @@ class Auth
                 'path' => '/',
                 'httponly' => true,
                 'samesite' => 'Lax',
-                'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+                'secure' => self::isSecureRequest(),
             ]);
             session_name('inv_session');
             session_start();
