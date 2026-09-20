@@ -23,9 +23,9 @@ if (trim((string)($data['confirm'] ?? '')) !== 'RESET') {
     Response::error('Type RESET to confirm starting a new counting cycle.', 422);
 }
 
-$pdo = Database::connection();
-$pdo->beginTransaction();
 try {
+    $pdo = Database::connection();
+    $pdo->beginTransaction();
     $now = Database::now();
     $stmt = $pdo->prepare(
         "UPDATE physical_counts SET is_deleted = 1, deleted_by = :uid, deleted_at = :now WHERE is_deleted = 0"
@@ -40,7 +40,9 @@ try {
     );
     $pdo->commit();
 } catch (\Throwable $e) {
-    $pdo->rollBack();
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log('[inventory-app] reset_cycle failed: ' . $e->getMessage());
     Response::error('Reset failed. No changes were saved.', 500);
 }

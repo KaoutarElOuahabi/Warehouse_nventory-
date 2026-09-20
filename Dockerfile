@@ -10,4 +10,4 @@ EXPOSE 8080
 
 ENV PORT=8080
 
-CMD ["bash", "-lc", "php -S 0.0.0.0:${PORT} -t public"]
+CMD ["bash", "-lc", "php /app/migrate.php && php -S 0.0.0.0:${PORT} -t public"]

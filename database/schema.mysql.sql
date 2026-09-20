@@ -106,4 +106,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     INDEX idx_audit_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+INSERT INTO users (username, password_hash, full_name, role, active)
+VALUES (
+    'admin',
+    '$2y$12$g/Mg9CEL8ohmKNIoEU9XcOqOJEb4RwhUgKPka25wWszfyzG1ZLB3u',
+    'Admin User',
+    'admin',
+    1
+)
+ON DUPLICATE KEY UPDATE
+    password_hash = VALUES(password_hash),
+    full_name = VALUES(full_name),
+    role = VALUES(role),
+    active = VALUES(active);
+
 SET FOREIGN_KEY_CHECKS = 1;

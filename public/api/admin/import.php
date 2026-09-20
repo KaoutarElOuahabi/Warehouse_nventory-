@@ -91,9 +91,10 @@ if (count($clean) === 0) {
     Response::error('No valid rows to import.', 422, ['errors' => array_slice($errors, 0, 100)]);
 }
 
-$pdo = Database::connection();
-$pdo->beginTransaction();
 try {
+    $pdo = Database::connection();
+    $pdo->beginTransaction();
+
     // Deactivate previous batch(es) — only one active stock snapshot at a time.
     $pdo->exec("UPDATE import_batches SET is_active = 0 WHERE is_active = 1");
 
@@ -136,7 +137,9 @@ try {
 
     $pdo->commit();
 } catch (\Throwable $e) {
-    $pdo->rollBack();
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log('[inventory-app] import failed: ' . $e->getMessage());
     Response::error('Import failed while writing to the database. No changes were saved.', 500);
 }
