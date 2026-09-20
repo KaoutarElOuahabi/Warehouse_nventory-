@@ -40,9 +40,9 @@ class Config
             'driver' => self::envValue('DB_DRIVER', self::envValue('DATABASE_DRIVER', 'mysql')),
             'host' => self::envValue('DB_HOST', self::envValue('MYSQLHOST', '127.0.0.1')),
             'port' => (int) self::envValue('DB_PORT', self::envValue('MYSQLPORT', 3306)),
-            'database' => self::envValue('DB_NAME', self::envValue('MYSQL_DATABASE', self::envValue('DB_DATABASE', 'inventory_app'))),
-            'username' => self::envValue('DB_USERNAME', self::envValue('MYSQL_USERNAME', 'root')),
-            'password' => self::envValue('DB_PASSWORD', self::envValue('MYSQL_PASSWORD', '')),
+            'database' => self::envValue('DB_NAME', self::envValue('MYSQL_DATABASE', self::envValue('MYSQLDATABASE', self::envValue('DB_DATABASE', 'inventory_app')))),
+            'username' => self::envValue('DB_USERNAME', self::envValue('MYSQL_USERNAME', self::envValue('MYSQLUSER', 'root'))),
+            'password' => self::envValue('DB_PASSWORD', self::envValue('MYSQL_PASSWORD', self::envValue('MYSQLPASSWORD', ''))),
             'sqlite_path' => self::envValue('DB_SQLITE_PATH', __DIR__ . '/../storage/database.sqlite'),
         ];
 
@@ -67,7 +67,7 @@ class Config
         $databaseUrl = self::envValue('DATABASE_URL', self::envValue('MYSQL_URL', ''));
         $dbDriver = self::envValue('DB_DRIVER', self::envValue('DATABASE_DRIVER', ''));
         $dbHost = self::envValue('DB_HOST', self::envValue('MYSQLHOST', ''));
-        return $databaseUrl !== '' || $dbDriver !== '' || $dbHost !== '';
+        return $databaseUrl !== '' || $dbDriver !== '' || $dbHost !== '' || self::envValue('MYSQLDATABASE', '') !== '' || self::envValue('MYSQLUSER', '') !== '' || self::envValue('MYSQLPASSWORD', '') !== '';
     }
 
     private static function load(): array

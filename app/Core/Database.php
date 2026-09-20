@@ -49,6 +49,7 @@ class Database
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
+            error_log('[inventory-app] DB connection failed: ' . $e->getMessage() . ' | host=' . ($config['host'] ?? 'unknown') . ' | db=' . ($config['database'] ?? 'unknown') . ' | port=' . ($config['port'] ?? 'unknown'));
             http_response_code(500);
             die(json_encode(['error' => 'Database connection failed. Check your database settings or Railway environment variables.']));
         }
