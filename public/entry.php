@@ -35,6 +35,15 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
     <div id="addressMsg" class="hint"></div>
   </div>
 
+  <div class="card" id="myAddressesCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+      <label class="mt-0" style="margin:0">MY ADDRESSES TODAY</label>
+      <span id="myAddressesSummary" class="hint mt-0"></span>
+    </div>
+    <input type="text" id="myAddressesFilter" placeholder="Filter my addresses" autocomplete="off" style="display:none;margin-top:10px">
+    <div id="myAddressesList" style="margin-top:10px"></div>
+  </div>
+
   <!-- STEP 2: HU + PN + Qty (hidden until address set) -->
   <div id="entryCard" style="display:none">
     <div class="card">

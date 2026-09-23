@@ -65,6 +65,12 @@ async function isKnownAddressMatch(code) {
     const item = e.target.closest('[data-code]');
     if (item) selectAddress(item.dataset.code);
   });
+  document.getElementById('myAddressesList').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-code]');
+    if (item && !item.classList.contains('locked')) selectAddress(item.dataset.code);
+  });
+  document.getElementById('myAddressesFilter').addEventListener('input', renderMyAddresses);
+  loadMyAddresses();
 
   document.getElementById('scanHuBtn').addEventListener('click', () => openCamera('huInput', 'Scan HU barcode', lookupHu));
   document.getElementById('huInput').addEventListener('input', onHuInput);
@@ -183,6 +189,7 @@ async function setAddress() {
     currentAddressCode = data.address.code;
     document.getElementById('currentAddress').textContent = currentAddressCode;
     document.getElementById('addressCard').style.display = 'none';
+    document.getElementById('myAddressesCard').style.display = 'none';
     document.getElementById('entryCard').style.display = 'block';
     document.getElementById('addressSuggestions').innerHTML = '';
     resetHuForm();
@@ -200,6 +207,56 @@ function changeAddress() {
   document.getElementById('addressInput').focus();
   currentAddressCode = null;
   countRows = new Map();
+  loadMyAddresses();
+}
+
+// ---------- My addresses today (quick re-check / reopen) ----------
+let myAddresses = [];
+const MY_STATUS = {
+  IN_PROGRESS: ['badge-diff', 'NOT COMPLETED'],
+  COMPLETED_OK: ['badge-match', 'COMPLETED'],
+  COMPLETED_CONTROL_REQUIRED: ['badge-unexpected', 'SENT TO CONTROL'],
+  CONTROL_IN_PROGRESS: ['badge-muted', 'WITH CONTROL'],
+  CONTROLLED: ['badge-muted', 'CONTROLLED'],
+};
+
+async function loadMyAddresses() {
+  try {
+    const data = await apiGet('/api/entry/my_addresses.php');
+    myAddresses = data.addresses || [];
+  } catch (e) {
+    myAddresses = [];
+  }
+  renderMyAddresses();
+}
+
+function renderMyAddresses() {
+  const card = document.getElementById('myAddressesCard');
+  const onAddressScreen = document.getElementById('addressCard').style.display !== 'none';
+  card.style.display = onAddressScreen && myAddresses.length ? 'block' : 'none';
+  if (!myAddresses.length) return;
+
+  const lines = myAddresses.reduce((sum, a) => sum + a.my_lines, 0);
+  const open = myAddresses.filter(a => a.status === 'IN_PROGRESS').length;
+  document.getElementById('myAddressesSummary').textContent =
+    `${myAddresses.length} address(es) · ${lines} line(s)` + (open ? ` · ${open} not completed` : '');
+
+  const filterInput = document.getElementById('myAddressesFilter');
+  filterInput.style.display = myAddresses.length > 8 ? 'block' : 'none';
+  const f = filterInput.value.trim().toUpperCase();
+  const shown = f ? myAddresses.filter(a => String(a.code).toUpperCase().includes(f)) : myAddresses;
+
+  document.getElementById('myAddressesList').innerHTML = shown.map(a => {
+    const [cls, label] = MY_STATUS[a.status] || ['badge-muted', a.status];
+    const locked = a.status === 'CONTROL_IN_PROGRESS' || a.status === 'CONTROLLED';
+    return `<div class="list-item${locked ? ' locked' : ''}" data-code="${escapeHtml(a.code)}">
+      <span>
+        <span class="code">${escapeHtml(a.code)}</span><br>
+        <span class="meta">${a.my_lines} line(s) · ${escapeHtml(String(a.last_activity || '').slice(11, 16))}</span>
+      </span>
+      <span class="badge ${cls}">${label}</span>
+    </div>`;
+  }).join('') || '<div class="hint">No match.</div>';
 }
 
 function renderAddressStatus(status, locked) {

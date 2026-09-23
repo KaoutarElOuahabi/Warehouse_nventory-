@@ -81,6 +81,8 @@ tr.match{opacity:.65}
 .badge-diff{background:var(--amber-bg);color:#fde68a}
 .badge-missing{background:var(--red-bg);color:#fecaca}
 .badge-unexpected{background:#3730a3;color:#c7d2fe}
+.badge-muted{background:var(--border);color:var(--muted)}
+.list-item.locked{cursor:default;opacity:.7}
 
 .list-item{
   display:flex;justify-content:space-between;align-items:center;
