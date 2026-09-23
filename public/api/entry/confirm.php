@@ -45,6 +45,7 @@ $masterPart = StockLookupService::findPartByNumber($partNumber);
 if (!$masterPart) {
     Response::error('Part Number is not in master data. Only known part numbers are allowed.', 422);
 }
+$partNumber = $masterPart['part_number'];
 
 try {
     $address = AddressService::findByCode($addressCode);
@@ -52,7 +53,9 @@ try {
         Response::error('Address not found in master data. Use a known address from the imported stock.', 422);
     }
     $addressId = (int)$address['id'];
-    AddressService::markInProgress($addressId);
+    if (AddressService::isLockedForEntry($address)) {
+        Response::error(AddressService::lockedMessage($address), 409);
+    }
 
     $authoritativeUnit = null;
     $expectedForHu = null;
@@ -155,6 +158,8 @@ try {
         ]);
         $physicalId = (int)Database::lastInsertId();
     }
+
+    AddressService::markCountingActivity($addressId);
 
     if ($existing) {
         AuditService::log('physical_count', $physicalId, 'entry_updated', $user, $existing, [

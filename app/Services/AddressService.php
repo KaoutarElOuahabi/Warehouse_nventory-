@@ -50,6 +50,34 @@ class AddressService
         $stmt->execute([':id' => $addressId, ':now' => Database::now()]);
     }
 
+    /** Once Control has the address, counters can no longer change it. */
+    public static function isLockedForEntry(array $address): bool
+    {
+        return in_array($address['status'], ['CONTROL_IN_PROGRESS', 'CONTROLLED'], true);
+    }
+
+    public static function lockedMessage(array $address): string
+    {
+        return $address['status'] === 'CONTROLLED'
+            ? "Address {$address['code']} is already controlled. Only Control can change it now."
+            : "Address {$address['code']} is being checked by Control. Only Control can change it now.";
+    }
+
+    /**
+     * Any recorded/edited/deleted line puts the address (back) to IN_PROGRESS,
+     * so a completed address whose lines changed must be completed again and
+     * its OK / control-required result is never stale.
+     */
+    public static function markCountingActivity(int $addressId): void
+    {
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare(
+            "UPDATE addresses SET status = 'IN_PROGRESS', completed_by = NULL, completed_at = NULL, updated_at = :now
+             WHERE id = :id AND status IN ('NOT_STARTED','COMPLETED_OK','COMPLETED_CONTROL_REQUIRED')"
+        );
+        $stmt->execute([':id' => $addressId, ':now' => Database::now()]);
+    }
+
     public static function setStatus(int $addressId, string $status, array $extra = []): void
     {
         $pdo = Database::connection();

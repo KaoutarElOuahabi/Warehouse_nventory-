@@ -7,6 +7,7 @@ use App\Core\Response;
 use App\Services\AddressService;
 use App\Services\AuditService;
 use App\Services\ComparisonService;
+use App\Services\StockLookupService;
 use App\Services\UnitService;
 
 $user = Auth::requireRole('control', 'admin');
@@ -37,10 +38,20 @@ try {
             $row = $stmt->fetch();
             if (!$row) Response::error('Physical count line not found.', 404);
 
-            $hu = array_key_exists('hu', $data) ? trim((string)$data['hu']) : $row['hu'];
-            $pn = array_key_exists('part_number', $data) ? trim((string)$data['part_number']) : $row['part_number'];
-            $unit = array_key_exists('unit', $data) ? UnitService::normalize((string)$data['unit']) : $row['unit'];
-            $qtyRaw = array_key_exists('quantity', $data) ? $data['quantity'] : $row['quantity'];
+            $hu = array_key_exists('hu', $data) ? trim((string)$data['hu']) : (string)($row['hu'] ?? '');
+            if ($hu !== '') {
+                validate_hu_format($hu);
+                if ($hu !== (string)$row['hu'] && huActiveAt($pdo, $addressId, $hu)) {
+                    Response::error("HU $hu is already recorded at this address.", 409);
+                }
+            }
+            $master = StockLookupService::findPartByNumber(array_key_exists('part_number', $data) ? trim((string)$data['part_number']) : $row['part_number']);
+            if (!$master) {
+                Response::error('Part Number is not in master data.', 422);
+            }
+            $pn = $master['part_number'];
+            $unit = $master['unit'];
+            $qtyRaw = array_key_exists('quantity', $data) ? $data['quantity'] : (float)$row['quantity'];
 
             $validation = UnitService::validateQuantity($qtyRaw, $unit);
             if (!$validation['valid']) Response::error($validation['error'], 422);
@@ -65,7 +76,18 @@ try {
         case 'add': {
             require_fields($data, ['part_number', 'quantity']);
             $hu = trim((string)($data['hu'] ?? ''));
-            $unit = UnitService::normalize((string)($data['unit'] ?? 'PCS'));
+            if ($hu !== '') {
+                validate_hu_format($hu);
+                if (huActiveAt($pdo, $addressId, $hu)) {
+                    Response::error("HU $hu is already recorded at this address — edit that line instead.", 409);
+                }
+            }
+            $master = StockLookupService::findPartByNumber(trim((string)$data['part_number']));
+            if (!$master) {
+                Response::error('Part Number is not in master data.', 422);
+            }
+            $data['part_number'] = $master['part_number'];
+            $unit = $master['unit'];
             $validation = UnitService::validateQuantity($data['quantity'], $unit);
             if (!$validation['valid']) Response::error($validation['error'], 422);
 
@@ -74,7 +96,7 @@ try {
                  VALUES (:aid, :hu, 0, :pn, :unit, :qty, :src, :uid, :now, 0)'
             );
             $stmt->execute([
-                ':aid' => $addressId, ':hu' => $hu !== '' ? $hu : null, ':pn' => trim((string)$data['part_number']),
+                ':aid' => $addressId, ':hu' => $hu !== '' ? $hu : null, ':pn' => $data['part_number'],
                 ':unit' => $unit, ':qty' => $validation['value'], ':src' => 'control_added',
                 ':uid' => $user['id'], ':now' => Database::now(),
             ]);
@@ -117,7 +139,20 @@ try {
     $cmp = ComparisonService::compareAddress($addressId);
 
     Response::ok(['lines' => $cmp['lines'], 'summary' => $cmp['summary']]);
+} catch (\PDOException $e) {
+    if ($e->getCode() === '23000') {
+        Response::error('This HU is already recorded at this address.', 409);
+    }
+    error_log('[inventory-app] control update failed: ' . $e->getMessage());
+    Response::error('Control update failed while querying the database.', 500);
 } catch (\Throwable $e) {
     error_log('[inventory-app] control update failed: ' . $e->getMessage());
     Response::error('Control update failed while querying the database.', 500);
+}
+
+function huActiveAt(\PDO $pdo, int $addressId, string $hu): bool
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM physical_counts WHERE address_id = :aid AND hu = :hu AND is_deleted = 0 LIMIT 1');
+    $stmt->execute([':aid' => $addressId, ':hu' => $hu]);
+    return (bool)$stmt->fetchColumn();
 }

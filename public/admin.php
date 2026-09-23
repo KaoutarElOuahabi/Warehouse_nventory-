@@ -38,8 +38,9 @@ $user = Auth::requireRole('admin');
       </div>
     </div>
     <div class="card">
-      <a class="btn btn-secondary" href="/api/admin/export_results.php">⬇ Export inventory results (CSV)</a>
+      <button class="btn-primary" style="width:auto" id="exportResultsBtn">⬇ Export results for SAP correction (Excel)</button>
       <a class="btn btn-secondary" style="margin-left:8px" href="/api/admin/export_audit.php">⬇ Export audit trail (CSV)</a>
+      <p class="hint">Sheets: <b>SAP corrections</b> (differences of finished addresses only — Controlled or Completed OK — with the action to post), <b>Not finished</b> (not counted / waiting for Control), <b>Addresses</b>, <b>All lines</b>.</p>
     </div>
     <div class="card">
       <h3 class="mt-0">Start a new counting cycle</h3>
@@ -53,6 +54,7 @@ $user = Auth::requireRole('admin');
     <div class="card">
       <h3 class="mt-0">Upload stock file</h3>
       <p class="hint">Required columns (any order, header row required): <b>Address, HU, Part Number, Unit, Quantity</b>. Accepts .xlsx, .xls, .csv.
+        A row with only an Address (HU/PN/Unit/Qty empty) registers an <b>empty bin</b>, so it can be counted too.
         <a href="/templates/stock_import_template.csv" download>Download template</a></p>
       <input type="file" id="importFile" accept=".xlsx,.xls,.csv">
       <button class="btn-secondary btn-block" style="margin-top:10px" id="previewBtn">Preview</button>

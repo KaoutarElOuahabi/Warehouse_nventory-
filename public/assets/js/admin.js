@@ -11,6 +11,7 @@ let parsedFilename = null;
   document.getElementById('previewBtn').addEventListener('click', onPreview);
   document.getElementById('commitBtn').addEventListener('click', onCommitImport);
   document.getElementById('statusFilter').addEventListener('change', loadAddresses);
+  document.getElementById('exportResultsBtn').addEventListener('click', exportResultsXlsx);
 
   await loadDashboard();
 })();
@@ -52,6 +53,75 @@ async function resetCycle() {
   } catch (e) { alert(e.message); }
 }
 
+// ---------- Results export (Excel) ----------
+const STATUS_TEXT = {
+  MATCH: 'Match', QUANTITY_DIFFERENCE: 'Quantity difference', PN_DIFFERENCE: 'Part number difference',
+  MISSING: 'Missing (in SAP, not found)', UNEXPECTED: 'Unexpected (found, not in SAP)',
+  WRONG_LOCATION: 'Wrong location', HU_LABEL_MISSING: 'HU label missing',
+};
+
+// Codes are written as text cells (leading zeros kept), quantities as number
+// cells, so Excel in any language shows them correctly.
+function sheetFrom(rows, widths) {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = widths.map(w => ({ wch: w }));
+  if (rows.length > 1) ws['!autofilter'] = { ref: ws['!ref'] };
+  return ws;
+}
+
+async function exportResultsXlsx() {
+  const btn = document.getElementById('exportResultsBtn');
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Building export…';
+  try {
+    const data = await apiGet('/api/admin/results.php');
+    const s = (v) => (v === null || v === undefined) ? '' : String(v);
+    const n = (v) => (v === null || v === undefined) ? '' : Number(v);
+
+    const lineHeader = ['Address', 'HU', 'Status', 'SAP action', 'SAP Part Number', 'SAP Qty', 'Counted Part Number', 'Counted Qty',
+      'Unit', 'Difference (counted - SAP)', 'SAP address of HU', 'HU also counted at', 'No HU label', 'Counted by', 'Address status'];
+    const lineRow = (l) => [
+      s(l.address), s(l.hu), STATUS_TEXT[l.status] || l.status, s(l.action),
+      s(l.expected_part_number), n(l.expected_quantity), s(l.physical_part_number), n(l.physical_quantity),
+      s(l.physical_unit || l.expected_unit), l.status === 'MATCH' ? 0 : n(l.difference),
+      s(l.sap_address), s(l.found_at), l.hu_not_available ? 'yes' : '', s(l.counted_by), s(l.address_status),
+    ];
+    const lineWidths = [14, 16, 26, 60, 18, 10, 18, 10, 8, 12, 14, 16, 10, 18, 26];
+
+    // Only final results may be posted in SAP: an address not counted or not
+    // yet controlled must never produce a "post the loss" line.
+    const FINAL = ['CONTROLLED', 'COMPLETED_OK'];
+    const REASON = {
+      NOT_STARTED: 'Not counted yet', IN_PROGRESS: 'Counting not completed',
+      COMPLETED_CONTROL_REQUIRED: 'Waiting for Control', CONTROL_IN_PROGRESS: 'Control in progress',
+    };
+    const diffs = data.lines.filter(l => l.status !== 'MATCH' && FINAL.includes(l.address_status));
+    const notFinished = data.addresses.filter(a => !FINAL.includes(a.status));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheetFrom([lineHeader, ...diffs.map(lineRow)], lineWidths), 'SAP corrections');
+    XLSX.utils.book_append_sheet(wb, sheetFrom(
+      [['Address', 'Status', 'Why not final', 'SAP HUs', 'Lines counted', 'Differences so far'],
+        ...notFinished.map(a => [s(a.code), s(a.status), REASON[a.status] || '', n(a.sap_hus), n(a.counted_lines), n(a.issues)])],
+      [14, 26, 24, 10, 14, 16]), 'Not finished');
+    XLSX.utils.book_append_sheet(wb, sheetFrom(
+      [['Address', 'Status', 'SAP HUs', 'Lines counted', 'Differences', 'Completed by', 'Completed at', 'Controlled by', 'Controlled at', 'Control observations'],
+        ...data.addresses.map(a => [s(a.code), s(a.status), n(a.sap_hus), n(a.counted_lines), n(a.issues), s(a.completed_by), s(a.completed_at),
+          s(a.controlled_by), s(a.controlled_at), s(a.control_observations)])],
+      [14, 26, 10, 14, 12, 18, 18, 18, 18, 40]), 'Addresses');
+    XLSX.utils.book_append_sheet(wb, sheetFrom([lineHeader, ...data.lines.map(lineRow)], lineWidths), 'All lines');
+
+    const stamp = String(data.generated_at || '').replace(/[^0-9]/g, '').slice(0, 12);
+    XLSX.writeFile(wb, `inventory_results_${stamp}.xlsx`);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 // ---------- Import ----------
 function onPreview() {
   const fileInput = document.getElementById('importFile');
@@ -63,11 +133,22 @@ function onPreview() {
     try {
       const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      // raw: false forces SheetJS to return the cell's formatted text instead of
-      // parsing numeric-looking codes (Address/HU/Part Number) into JS numbers,
-      // which was silently dropping leading zeros (e.g. "300660525").
-      const json = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-      parsedRows = json.map(r => normalizeRow(r));
+      // Codes come from the displayed text (keeps leading zeros like "000123"),
+      // quantities from the real cell value (a "2,000"-formatted cell must stay
+      // 2000, not become the text "2,000").
+      const textRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+      parsedRows = textRows.map((r, i) => {
+        const t = normalizeRow(r);
+        const raw = normalizeRow(rawRows[i] || {});
+        return {
+          address: codeValue(t.address, raw.address),
+          hu: codeValue(t.hu, raw.hu),
+          part_number: codeValue(t.part_number, raw.part_number),
+          unit: String(t.unit ?? '').trim(),
+          quantity: typeof raw.quantity === 'number' ? raw.quantity : String(raw.quantity ?? '').trim(),
+        };
+      });
       const data = await apiPost('/api/admin/import.php', { rows: parsedRows, filename: parsedFilename, mode: 'preview' });
       renderPreview(data);
     } catch (err) {
@@ -96,14 +177,34 @@ function normalizeRow(r) {
   };
 }
 
+// A code cell stored as a number: use its displayed text when that is pure
+// digits (keeps zero-padding from the cell format), else the full integer
+// (never "3.00661E+11").
+function codeValue(text, raw) {
+  if (typeof raw === 'number') {
+    const t = String(text ?? '').trim();
+    if (/^\d+$/.test(t)) return t;
+    return Number.isInteger(raw) ? raw.toFixed(0) : String(raw);
+  }
+  return String(raw ?? '').trim();
+}
+
 function renderPreview(data) {
   const box = document.getElementById('importPreview');
-  let html = `<div class="banner ${data.error_count ? 'warn' : 'ok'}">${data.valid_rows} valid row(s), ${data.error_count} issue(s)</div>`;
+  let html = `<div class="banner ${data.error_count ? 'warn' : 'ok'}">${data.valid_rows} valid stock row(s), ${data.empty_bins || 0} empty bin(s), ${data.error_count} rejected row(s)</div>`;
   if (data.errors.length) {
-    html += '<div class="card" style="max-height:200px;overflow:auto"><ul>' + data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul></div>';
+    html += '<div class="card" style="max-height:200px;overflow:auto"><b>Rejected rows (not imported)</b><ul>' + data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul></div>';
+  }
+  if (data.warnings && data.warnings.length) {
+    html += '<div class="card" style="max-height:200px;overflow:auto"><b>Check before importing</b><ul>' + data.warnings.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul></div>';
+  }
+  if (data.sample && data.sample.length) {
+    html += '<div class="card" style="overflow-x:auto"><b>First rows as they will be imported</b><table><thead><tr><th>Address</th><th>HU</th><th>Part Number</th><th>Qty</th><th>Unit</th></tr></thead><tbody>' +
+      data.sample.map(s => `<tr><td>${escapeHtml(s.address)}</td><td>${escapeHtml(s.hu)}</td><td>${escapeHtml(s.part_number)}</td><td>${escapeHtml(formatQty(s.quantity))}</td><td>${escapeHtml(s.unit)}</td></tr>`).join('') +
+      '</tbody></table></div>';
   }
   box.innerHTML = html;
-  document.getElementById('commitBtn').style.display = data.valid_rows > 0 ? 'block' : 'none';
+  document.getElementById('commitBtn').style.display = (data.valid_rows > 0 || data.empty_bins > 0) ? 'block' : 'none';
 }
 
 async function onCommitImport() {
@@ -111,7 +212,7 @@ async function onCommitImport() {
   if (!confirm('This replaces the currently active stock snapshot. Continue?')) return;
   try {
     const res = await apiPost('/api/admin/import.php', { rows: parsedRows, filename: parsedFilename, mode: 'commit' });
-    alert(`Imported ${res.imported_rows} row(s). ${res.error_count} issue(s) skipped.`);
+    alert(`Imported ${res.imported_rows} stock row(s) and ${res.empty_bins} empty bin(s). ${res.error_count} row(s) rejected.`);
     document.getElementById('commitBtn').style.display = 'none';
     document.getElementById('importPreview').innerHTML = '';
     document.getElementById('importFile').value = '';
@@ -139,9 +240,9 @@ async function viewAddress(code) {
   const data = await apiGet('/api/admin/address_detail.php?code=' + encodeURIComponent(code));
   const lines = data.lines.map(l => `<tr>
       <td>${escapeHtml(l.hu || '(no HU)')}</td>
-      <td>${l.expected_quantity !== null ? escapeHtml(l.expected_part_number) + ' — ' + l.expected_quantity + ' ' + l.expected_unit : '—'}</td>
-      <td>${l.physical_quantity !== null ? escapeHtml(l.physical_part_number) + ' — ' + l.physical_quantity + ' ' + l.physical_unit : '—'}</td>
-      <td>${escapeHtml(l.status)}</td>
+      <td>${l.expected_quantity !== null ? escapeHtml(l.expected_part_number) + ' — ' + escapeHtml(formatQty(l.expected_quantity)) + ' ' + escapeHtml(l.expected_unit) : '—'}</td>
+      <td>${l.physical_quantity !== null ? escapeHtml(l.physical_part_number) + ' — ' + escapeHtml(formatQty(l.physical_quantity)) + ' ' + escapeHtml(l.physical_unit) : '—'}</td>
+      <td>${escapeHtml(l.status)}${l.action ? `<div class="hint">${escapeHtml(l.action)}</div>` : ''}</td>
     </tr>`).join('');
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';

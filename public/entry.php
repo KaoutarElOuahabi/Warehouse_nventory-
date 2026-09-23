@@ -27,7 +27,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
   <div class="card" id="addressCard">
     <label class="mt-0">ADDRESS</label>
     <div class="scan-row">
-      <input type="text" id="addressInput" placeholder="Address format: A-01-01" autocomplete="off">
+      <input type="text" id="addressInput" placeholder="Type or scan the address" autocomplete="off">
       <button class="btn-secondary" id="scanAddressBtn">📷 Scan</button>
     </div>
     <div id="addressSuggestions"></div>
@@ -41,12 +41,13 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
       <div class="hint mt-0">ADDRESS</div>
       <div class="readonly-field" id="currentAddress" style="font-size:1.3rem"></div>
       <button class="btn-secondary btn-sm" style="margin-top:8px" onclick="changeAddress()">Change address</button>
+      <div id="addressStatusNote"></div>
     </div>
 
     <div class="card">
       <label class="mt-0">HANDLING UNIT</label>
       <div class="scan-row">
-        <input type="text" id="huInput" placeholder="HU number, e.g. 300660525" autocomplete="off">
+        <input type="text" id="huInput" placeholder="9 digits, e.g. 300660525" inputmode="numeric" autocomplete="off">
         <button class="btn-secondary" id="scanHuBtn">📷 Scan</button>
       </div>
       <div id="huMsg" class="hint"></div>
@@ -62,12 +63,14 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
         <input type="text" id="pnInput" placeholder="Scan or search Part Number" autocomplete="off">
       </div>
       <div id="pnSuggestions"></div>
+      <div id="pnMsg" class="hint hint-err"></div>
 
       <label>UNIT</label>
       <div class="readonly-field empty" id="unitField">—</div>
 
       <label>QUANTITY *</label>
-      <input type="number" id="quantityInput" step="any" placeholder="Enter quantity" inputmode="decimal">
+      <input type="text" id="quantityInput" placeholder="e.g. 12 or 2,5" inputmode="decimal" autocomplete="off">
+      <div id="qtyPreview" class="hint"></div>
 
       <div id="entryBanner"></div>
 
@@ -76,11 +79,11 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span>HUs recorded at this address:</span>
+        <span>Lines recorded at this address:</span>
         <strong id="huCount" style="font-size:1.3rem">0</strong>
       </div>
-      <button class="btn-success btn-block" id="completeBtn" style="margin-top:14px">COMPLETE ADDRESS</button>
       <div id="recordedList" style="margin-top:12px"></div>
+      <button class="btn-success btn-block" id="completeBtn" style="margin-top:14px">COMPLETE ADDRESS</button>
     </div>
   </div>
 

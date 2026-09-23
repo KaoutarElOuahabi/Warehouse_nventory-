@@ -42,13 +42,17 @@ function require_fields(array $data, array $fields): void
     }
 }
 
-/** Rejects address-shaped or garbage values passed as a Handling Unit code. */
+/** Handling Units are always 9 digits starting with 300, e.g. 300660525. Mirrored in entry.js. */
+const HU_PATTERN = '/^300\d{6}$/';
+
+function is_hu_format(string $value): bool
+{
+    return (bool)preg_match(HU_PATTERN, $value);
+}
+
 function validate_hu_format(string $hu): void
 {
-    if (preg_match('/^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/i', $hu)) {
-        Response::error('This looks like an Address, not a Handling Unit.', 422);
-    }
-    if (!preg_match('/^[A-Z0-9]{3,32}$/i', $hu)) {
-        Response::error('Handling Unit format is invalid.', 422);
+    if (!is_hu_format($hu)) {
+        Response::error("\"$hu\" is not a Handling Unit. An HU is 9 digits starting with 300, e.g. 300660525.", 422);
     }
 }

@@ -52,8 +52,7 @@ $user = Auth::requireRole('control', 'admin');
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="text" id="addHu" placeholder="HU (optional)" style="flex:1;min-width:100px">
         <input type="text" id="addPn" placeholder="Part Number" style="flex:1;min-width:120px">
-        <input type="text" id="addUnit" placeholder="Unit" style="width:90px">
-        <input type="number" id="addQty" placeholder="Qty" step="any" style="width:100px">
+        <input type="text" id="addQty" placeholder="Qty" inputmode="decimal" autocomplete="off" style="width:110px">
       </div>
       <button class="btn-secondary btn-block" style="margin-top:10px" onclick="addPhysical()">+ Add</button>
     </div>

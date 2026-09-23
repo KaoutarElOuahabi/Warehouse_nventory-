@@ -46,35 +46,65 @@ function backToQueue() {
   loadQueue();
 }
 
+const STATUS_BADGES = {
+  MATCH: ['badge-match', 'MATCH'],
+  QUANTITY_DIFFERENCE: ['badge-diff', 'QTY DIFF'],
+  PN_DIFFERENCE: ['badge-diff', 'PN DIFF'],
+  MISSING: ['badge-missing', 'MISSING'],
+  UNEXPECTED: ['badge-unexpected', 'UNEXPECTED'],
+  WRONG_LOCATION: ['badge-unexpected', 'WRONG LOCATION'],
+  HU_LABEL_MISSING: ['badge-diff', 'NO HU LABEL'],
+};
+
 function badgeFor(status) {
-  const map = { MATCH: 'badge-match', QUANTITY_DIFFERENCE: 'badge-diff', MISSING: 'badge-missing', UNEXPECTED: 'badge-unexpected' };
-  const label = { MATCH: 'MATCH', QUANTITY_DIFFERENCE: 'QTY DIFF', MISSING: 'MISSING', UNEXPECTED: 'UNEXPECTED' };
-  return `<span class="badge ${map[status]}">${label[status]}</span>`;
+  const [cls, label] = STATUS_BADGES[status] || ['badge-diff', status];
+  return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
+function qtyCell(pn, qty, unit) {
+  if (qty === null || qty === undefined) return '<span class="text-muted">—</span>';
+  return `${escapeHtml(pn)} — <b>${escapeHtml(formatQty(qty))}</b> ${escapeHtml(unit)}`;
 }
 
 function renderLines(lines, summary) {
   document.getElementById('addrSummary').textContent =
     `${summary.match} matching · ${summary.issues} issue(s) · ${summary.total} line(s) total`;
+  currentLines = [];
   const body = document.getElementById('linesBody');
   body.innerHTML = lines.map(l => {
-    const expected = l.expected_quantity !== null ? `${l.expected_part_number} — ${l.expected_quantity} ${l.expected_unit}` : '<span class="text-muted">—</span>';
-    const physical = l.physical_quantity !== null ? `${l.physical_part_number} — ${l.physical_quantity} ${l.physical_unit}` : '<span class="text-muted">—</span>';
+    const expected = qtyCell(l.expected_part_number, l.expected_quantity, l.expected_unit)
+      + (l.sap_address ? `<div class="hint">SAP address: ${escapeHtml(l.sap_address)}</div>` : '');
+    const physical = qtyCell(l.physical_part_number, l.physical_quantity, l.physical_unit)
+      + (l.found_at ? `<div class="hint">Counted at: ${escapeHtml(l.found_at)}</div>` : '');
     const rowClass = l.status === 'MATCH' ? 'match' : '';
-    const huLabel = l.hu ? escapeHtml(l.hu) : (l.hu_not_available ? '(HU not available)' : '—');
+    const huLabel = escapeHtml(l.hu || '') + (l.hu_not_available ? `${l.hu ? '<br>' : ''}<span class="hint">(no HU label)</span>` : '') || '—';
     let actions = '';
     if (l.status !== 'MATCH') {
+      const i = currentLines.push(l) - 1;
       if (l.physical_id) {
-        actions += `<button class="btn-secondary btn-sm" onclick='openCorrect(${JSON.stringify(l)})'>Edit</button> `;
-        actions += `<button class="btn-danger btn-sm" onclick="removeLine(${l.physical_id})">Remove</button> `;
+        actions += `<button class="btn-secondary btn-sm" data-act="edit" data-i="${i}">Edit</button> `;
+        actions += `<button class="btn-danger btn-sm" data-act="remove" data-i="${i}">Remove</button> `;
       }
-      actions += `<button class="btn-secondary btn-sm" onclick="confirmDifference(${JSON.stringify(huLabel)})">Confirm real</button>`;
+      actions += `<button class="btn-secondary btn-sm" data-act="confirm" data-i="${i}">Confirm real</button>`;
     }
     return `<tr class="${rowClass}">
-      <td>${huLabel}</td><td>${expected}</td><td>${physical}</td><td>${badgeFor(l.status)}</td>
+      <td>${huLabel}</td><td>${expected}</td><td>${physical}</td>
+      <td>${badgeFor(l.status)}${l.action ? `<div class="hint">${escapeHtml(l.action)}</div>` : ''}</td>
       <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('');
 }
+
+let currentLines = [];
+document.getElementById('linesBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const l = currentLines[Number(btn.dataset.i)];
+  if (!l) return;
+  if (btn.dataset.act === 'edit') openCorrect(l);
+  if (btn.dataset.act === 'remove') removeLine(l.physical_id);
+  if (btn.dataset.act === 'confirm') confirmDifference(l.hu || '(no HU label)');
+});
 
 async function refreshCurrentLines() {
   const data = await apiGet('/api/control/address.php?code=' + encodeURIComponent(currentAddress));
@@ -84,13 +114,13 @@ async function refreshCurrentLines() {
 function openCorrect(line) {
   const hu = prompt('Handling Unit:', line.hu || '');
   if (hu === null) return;
-  const pn = prompt('Part Number:', line.physical_part_number || '');
+  const pn = prompt('Part Number (unit is taken from master data):', line.physical_part_number || '');
   if (pn === null) return;
-  const unit = prompt('Unit:', line.physical_unit || '');
-  if (unit === null) return;
-  const qty = prompt('Quantity:', line.physical_quantity !== null ? line.physical_quantity : '');
+  const qty = prompt(`Quantity (${line.physical_unit}):`, formatQty(line.physical_quantity));
   if (qty === null) return;
-  updateLine('correct', { physical_id: line.physical_id, hu, part_number: pn, unit, quantity: qty });
+  const parsed = parseQuantityText(qty);
+  if (parsed.error) { alert(parsed.error); return; }
+  updateLine('correct', { physical_id: line.physical_id, hu: hu.trim(), part_number: pn.trim(), quantity: qty.trim() });
 }
 
 async function removeLine(physicalId) {
@@ -107,22 +137,25 @@ async function confirmDifference(hu) {
 async function addPhysical() {
   const hu = document.getElementById('addHu').value.trim();
   const pn = document.getElementById('addPn').value.trim();
-  const unit = document.getElementById('addUnit').value.trim() || 'PCS';
-  const qty = document.getElementById('addQty').value;
+  const qty = document.getElementById('addQty').value.trim();
   if (!pn || !qty) { alert('Part Number and Quantity are required.'); return; }
-  await updateLine('add', { hu, part_number: pn, unit, quantity: qty });
-  document.getElementById('addHu').value = '';
-  document.getElementById('addPn').value = '';
-  document.getElementById('addUnit').value = '';
-  document.getElementById('addQty').value = '';
+  const parsed = parseQuantityText(qty);
+  if (parsed.error) { alert(parsed.error); return; }
+  if (await updateLine('add', { hu, part_number: pn, quantity: qty })) {
+    document.getElementById('addHu').value = '';
+    document.getElementById('addPn').value = '';
+    document.getElementById('addQty').value = '';
+  }
 }
 
 async function updateLine(action, payload) {
   try {
     const data = await apiPost('/api/control/update_line.php', Object.assign({ address_code: currentAddress, action }, payload));
     renderLines(data.lines, data.summary);
+    return true;
   } catch (e) {
     alert(e.message);
+    return false;
   }
 }
 

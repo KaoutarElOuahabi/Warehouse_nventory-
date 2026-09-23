@@ -13,17 +13,21 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data = json_body();
 require_fields($data, ['code']);
-$code = strtoupper(trim((string)$data['code']));
+$code = trim((string)$data['code']);
 if ($code === '') {
     Response::error('Address code cannot be empty.', 422);
 }
-if (!preg_match('/^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/', $code)) {
-    Response::error('Address format invalid. Use a known address like A-01-01. HU numbers are not valid addresses.', 422);
-}
 
+// Master data is the only rule for addresses (any format, kept as text).
 $address = AddressService::findByCode($code);
 if (!$address) {
-    Response::error('Address not found in master data. Use a known address from the imported stock.', 422);
+    if (is_hu_format($code)) {
+        Response::error("$code is a Handling Unit, not an address. Select the address from the list.", 422);
+    }
+    Response::error('Address not found in master data. Select a valid address from the list.', 422);
+}
+if (AddressService::isLockedForEntry($address)) {
+    Response::error(AddressService::lockedMessage($address), 409);
 }
 
 AddressService::markInProgress((int)$address['id']);

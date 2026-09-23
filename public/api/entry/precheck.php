@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../../app/bootstrap.php';
 
 use App\Core\Auth;
+use App\Core\Database;
 use App\Core\Response;
 use App\Services\AddressService;
 use App\Services\StockLookupService;
@@ -44,12 +45,36 @@ $masterPart = StockLookupService::findPartByNumber($partNumber);
 if (!$masterPart) {
     Response::error('Part Number is not in master data. Only known part numbers are allowed.', 422);
 }
+$partNumber = $masterPart['part_number'];
 
 $address = AddressService::findByCode($addressCode);
 if (!$address) {
     Response::error('Address not found in master data. Use a known address from the imported stock.', 422);
 }
 $addressId = (int)$address['id'];
+if (AddressService::isLockedForEntry($address)) {
+    Response::error(AddressService::lockedMessage($address), 409);
+}
+
+// Physical counts only (never the SAP quantity): lets the UI ask before an
+// existing count is replaced, or warn that the HU was counted elsewhere.
+$alreadyHere = null;
+$countedElsewhere = [];
+if (!$huNotAvailable) {
+    $stmt = Database::connection()->prepare(
+        'SELECT pc.address_id, pc.quantity, pc.unit, a.code FROM physical_counts pc
+         INNER JOIN addresses a ON a.id = pc.address_id
+         WHERE pc.hu = :hu AND pc.is_deleted = 0'
+    );
+    $stmt->execute([':hu' => $hu]);
+    foreach ($stmt->fetchAll() as $row) {
+        if ((int)$row['address_id'] === $addressId) {
+            $alreadyHere = ['quantity' => (float)$row['quantity'], 'unit' => $row['unit']];
+        } else {
+            $countedElsewhere[] = $row['code'];
+        }
+    }
+}
 
 $authoritativeUnit = null;
 $expectedForHu = null;
@@ -84,4 +109,7 @@ if ($expectedForHu !== null && $addressId !== null && (int)$expectedForHu['addre
 Response::ok([
     'signal' => $signal,
     'unit' => $authoritativeUnit,
+    'quantity' => $quantity,
+    'already_here' => $alreadyHere,
+    'counted_elsewhere' => array_values(array_unique($countedElsewhere)),
 ]);

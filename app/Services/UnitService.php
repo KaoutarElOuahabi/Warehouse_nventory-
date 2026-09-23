@@ -70,67 +70,83 @@ class UnitService
         return false; // unknown or whole-number unit -> integers only
     }
 
-    /**
-     * Validates a quantity string against the rules for a given unit.
-     * Returns ['valid' => bool, 'value' => float|null, 'error' => string|null]
-     */
-    public static function parseNumericInput($rawQuantity): ?float
+    /** Canonical units that accept decimals (KG, M, L, ...). */
+    public static function decimalUnits(): array
     {
-        if ($rawQuantity === null) {
-            return null;
-        }
-
-        if (is_int($rawQuantity) || is_float($rawQuantity)) {
-            return (float)$rawQuantity;
-        }
-
-        if (!is_string($rawQuantity)) {
-            return is_numeric($rawQuantity) ? (float)$rawQuantity : null;
-        }
-
-        $value = trim($rawQuantity);
-        if ($value === '') {
-            return 0.0;
-        }
-
-        $value = str_replace(' ', '', $value);
-        if (strpos($value, ',') !== false && strpos($value, '.') !== false) {
-            $lastComma = strrpos($value, ',');
-            $lastDot = strrpos($value, '.');
-            if ($lastComma > $lastDot) {
-                $value = str_replace('.', '', $value);
-                $value = str_replace(',', '.', $value);
-            } else {
-                $value = str_replace(',', '', $value);
-            }
-        } elseif (strpos($value, ',') !== false) {
-            $parts = explode(',', $value);
-            if (count($parts) > 2) {
-                $value = implode('', $parts);
-            } else {
-                $value = str_replace(',', '.', $value);
-            }
-        }
-
-        if (!is_numeric($value)) {
-            return null;
-        }
-
-        return (float)$value;
+        return array_values(array_unique(self::DECIMAL_UNITS));
     }
 
+    /**
+     * Parses a typed/imported quantity without ever guessing. Accepts "12",
+     * "2,5", "2.5", "0,250", "1.234,5", "1,234.5". Rejects "1.500" / "2,000"
+     * (thousands or decimals? — a silent 1000x error in a stock count) and
+     * anything that isn't a plain number. Mirrored by parseQuantityText() in
+     * common.js — keep both in sync.
+     * @return array{value: ?float, error: ?string}
+     */
+    public static function parseQuantityText(string $text): array
+    {
+        $v = trim($text);
+        if ($v === '') {
+            return ['value' => null, 'error' => 'Quantity is required.'];
+        }
+        if ($v[0] === '-') {
+            return ['value' => null, 'error' => 'Quantity cannot be negative.'];
+        }
+        if (preg_match('/^\d+$/', $v)) {
+            return ['value' => (float)$v, 'error' => null];
+        }
+        if (preg_match('/^\d{1,3}(\.\d{3})+(,\d+)?$/', $v) && (strpos($v, ',') !== false || substr_count($v, '.') > 1)) {
+            return ['value' => (float)str_replace(['.', ','], ['', '.'], $v), 'error' => null];
+        }
+        if (preg_match('/^\d{1,3}(,\d{3})+(\.\d+)?$/', $v) && (strpos($v, '.') !== false || substr_count($v, ',') > 1)) {
+            return ['value' => (float)str_replace(',', '', $v), 'error' => null];
+        }
+        if (preg_match('/^(\d+)[.,](\d+)$/', $v, $m)) {
+            if (strlen($m[2]) === 3 && preg_match('/^[1-9]\d{0,2}$/', $m[1])) {
+                return ['value' => null, 'error' => "\"$v\" is ambiguous (thousands or decimals?). Type it without a thousands separator, e.g. 1500 or 1,5."];
+            }
+            return ['value' => (float)($m[1] . '.' . $m[2]), 'error' => null];
+        }
+        return ['value' => null, 'error' => "\"$v\" is not a valid quantity. Use digits only, with one decimal separator if needed (e.g. 12 or 2,5)."];
+    }
+
+    public static function parseNumericInput($rawQuantity): ?float
+    {
+        if (is_int($rawQuantity) || is_float($rawQuantity)) {
+            return is_finite((float)$rawQuantity) ? (float)$rawQuantity : null;
+        }
+        if (!is_string($rawQuantity)) {
+            return null;
+        }
+        return self::parseQuantityText($rawQuantity)['value'];
+    }
+
+    /**
+     * Validates a quantity against the rules for a given unit.
+     * Returns ['valid' => bool, 'value' => float|null, 'error' => string|null]
+     */
     public static function validateQuantity($rawQuantity, string $unit): array
     {
-        if ($rawQuantity === null) {
+        if ($rawQuantity === null || $rawQuantity === '') {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity is required.'];
         }
 
-        $parsed = self::parseNumericInput($rawQuantity);
-        if ($parsed === null) {
+        if (is_int($rawQuantity) || is_float($rawQuantity)) {
+            $value = (float)$rawQuantity;
+            if (!is_finite($value)) {
+                return ['valid' => false, 'value' => null, 'error' => 'Quantity must be a number.'];
+            }
+        } elseif (is_string($rawQuantity)) {
+            $parsed = self::parseQuantityText($rawQuantity);
+            if ($parsed['error'] !== null) {
+                return ['valid' => false, 'value' => null, 'error' => $parsed['error']];
+            }
+            $value = $parsed['value'];
+        } else {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity must be a number.'];
         }
 
-        $value = $parsed;
         if ($value < 0) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity cannot be negative.'];
         }

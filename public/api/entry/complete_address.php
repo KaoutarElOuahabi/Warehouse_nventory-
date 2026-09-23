@@ -21,12 +21,19 @@ $address = AddressService::findByCode($code);
 if (!$address) {
     Response::error('Unknown address — scan it first.', 404);
 }
+if (AddressService::isLockedForEntry($address)) {
+    Response::error(AddressService::lockedMessage($address), 409);
+}
 
-$result = ComparisonService::recomputeAndSetStatus(
-    (int)$address['id'],
-    'COMPLETED_OK',
-    'COMPLETED_CONTROL_REQUIRED'
-);
+$stmt = \App\Core\Database::connection()->prepare('SELECT COUNT(*) c FROM physical_counts WHERE address_id = :aid AND is_deleted = 0');
+$stmt->execute([':aid' => $address['id']]);
+$lineCount = (int)$stmt->fetch()['c'];
+$confirmedEmpty = $lineCount === 0;
+if ($confirmedEmpty && empty($data['confirm_empty'])) {
+    Response::error('No HU recorded at this address. Confirm that the address is physically EMPTY.', 422, ['needs_empty_confirmation' => true]);
+}
+
+$result = ComparisonService::compareAddress((int)$address['id']);
 
 AddressService::setStatus((int)$address['id'], $result['requires_control'] ? 'COMPLETED_CONTROL_REQUIRED' : 'COMPLETED_OK', [
     'completed_by' => $user['id'],
@@ -39,8 +46,8 @@ AuditService::log(
     'completed_by_entry',
     $user,
     null,
-    ['requires_control' => $result['requires_control'], 'summary' => $result['summary']],
-    "Address $code marked complete by data entry"
+    ['requires_control' => $result['requires_control'], 'summary' => $result['summary'], 'confirmed_empty' => $confirmedEmpty],
+    $confirmedEmpty ? "Address $code confirmed physically EMPTY by data entry" : "Address $code marked complete by data entry"
 );
 
 // Spec 5/15: no HU-level detail, no quantities — just the outcome.

@@ -12,6 +12,7 @@ use App\Services\UnitService;
  * Expects JSON: { filename: string, rows: [{address, hu, part_number, unit, quantity}, ...], mode: 'preview'|'commit' }
  * The browser parses the uploaded Excel/CSV with SheetJS and posts rows here as JSON;
  * this endpoint re-validates everything server-side (never trusts the client parse).
+ * A row with only an Address registers an empty bin so it can be counted too.
  */
 
 $user = Auth::requireRole('admin');
@@ -34,63 +35,82 @@ if (count($rows) > 200000) {
 }
 
 $errors = [];
-$clean = [];
+$warnings = [];
+$byHu = [];
+$emptyBins = [];
 $lineNo = 1;
 foreach ($rows as $r) {
     $lineNo++; // account for header row = line 1
+    if (!is_array($r)) {
+        $errors[] = "Row $lineNo: unreadable row.";
+        continue;
+    }
     $address = trim((string)($r['address'] ?? ''));
     $hu = trim((string)($r['hu'] ?? ''));
     $pn = trim((string)($r['part_number'] ?? ''));
     $unitRaw = trim((string)($r['unit'] ?? ''));
     $qtyRaw = $r['quantity'] ?? null;
+    $qtyBlank = $qtyRaw === null || (is_string($qtyRaw) && trim($qtyRaw) === '');
 
+    if ($hu === '' && $pn === '' && $unitRaw === '' && $qtyBlank) {
+        if ($address !== '') {
+            $emptyBins[$address] = true;
+        }
+        continue;
+    }
     if ($address === '' || $hu === '' || $pn === '' || $unitRaw === '') {
         $errors[] = "Row $lineNo: missing required value(s) (Address, HU, Part Number, Unit are required).";
         continue;
     }
-    if ($qtyRaw === null || (is_string($qtyRaw) && trim((string)$qtyRaw) === '')) {
-        $qtyRaw = 0;
-    }
-    if (!is_numeric($qtyRaw)) {
-        $errors[] = "Row $lineNo: Quantity \"$qtyRaw\" is not a number.";
-        continue;
-    }
     $unit = UnitService::normalize($unitRaw);
-    $qtyValidation = UnitService::validateQuantity($qtyRaw, $unit);
+    $qtyValidation = UnitService::validateQuantity($qtyBlank ? 0 : $qtyRaw, $unit);
     if (!$qtyValidation['valid']) {
-        $errors[] = "Row $lineNo: $qtyValidation[error]";
+        $errors[] = "Row $lineNo (HU $hu): {$qtyValidation['error']}";
         continue;
     }
-
-    $clean[] = [
-        'address' => $address,
-        'hu' => $hu,
-        'part_number' => $pn,
-        'unit' => $unit,
-        'quantity' => $qtyValidation['value'],
-    ];
-}
-
-// Duplicate HU within the same import is a data problem worth flagging but not fatal —
-// last occurrence wins, matching typical spreadsheet corrections.
-$huSeen = [];
-foreach ($clean as $i => $row) {
-    if (isset($huSeen[$row['hu']])) {
-        $errors[] = "Note: HU \"{$row['hu']}\" appears more than once in the file; the last row wins.";
+    if (!is_hu_format($hu)) {
+        $warnings[] = "Row $lineNo: HU \"$hu\" is not 9 digits starting with 300 — it cannot be entered in data entry.";
     }
-    $huSeen[$row['hu']] = $i;
+
+    $row = ['address' => $address, 'hu' => $hu, 'part_number' => $pn, 'unit' => $unit, 'quantity' => $qtyValidation['value']];
+    if (isset($byHu[$hu])) {
+        $prev = $byHu[$hu];
+        if ($prev['address'] !== $address) {
+            $warnings[] = "Row $lineNo: HU \"$hu\" is listed at {$prev['address']} and at $address — only $address (last row) is kept.";
+            $byHu[$hu] = $row;
+        } elseif (strcasecmp($prev['part_number'], $pn) !== 0) {
+            $warnings[] = "Row $lineNo: HU \"$hu\" contains several part numbers ({$prev['part_number']}, $pn). Mixed HUs are not supported — only $pn (last row) is kept.";
+            $byHu[$hu] = $row;
+        } else {
+            $byHu[$hu]['quantity'] = round($prev['quantity'] + $row['quantity'], 4);
+            $warnings[] = "Row $lineNo: HU \"$hu\" / $pn appears more than once at $address — quantities added up to {$byHu[$hu]['quantity']} $unit.";
+        }
+        continue;
+    }
+    $byHu[$hu] = $row;
+}
+$clean = array_values($byHu);
+foreach ($clean as $row) {
+    unset($emptyBins[$row['address']]);
+}
+$warningCount = count($warnings);
+if ($warningCount > 100) {
+    $warnings = array_slice($warnings, 0, 100);
+    $warnings[] = '… and ' . ($warningCount - 100) . ' more.';
 }
 
 if ($mode === 'preview') {
     Response::ok([
         'valid_rows' => count($clean),
+        'empty_bins' => count($emptyBins),
         'error_count' => count($errors),
         'errors' => array_slice($errors, 0, 100),
+        'warnings' => $warnings,
         'sample' => array_slice($clean, 0, 10),
     ]);
 }
 
-if (count($clean) === 0) {
+if (count($clean) === 0 && count($emptyBins) === 0) {
     Response::error('No valid rows to import.', 422, ['errors' => array_slice($errors, 0, 100)]);
 }
 
@@ -144,6 +164,9 @@ try {
         ]);
         $upsertPart->execute([':pn' => $row['part_number'], ':unit' => $row['unit'], ':now' => $now]);
     }
+    foreach (array_keys($emptyBins) as $bin) {
+        AddressService::getOrCreate($bin);
+    }
 
     $pdo->commit();
 } catch (\Throwable $e) {
@@ -155,12 +178,13 @@ try {
 }
 
 AuditService::log('import_batch', $batchId, 'import_committed', $user, null, [
-    'filename' => $filename, 'row_count' => count($clean), 'error_count' => count($errors),
-], "Imported {$filename} — " . count($clean) . ' rows');
+    'filename' => $filename, 'row_count' => count($clean), 'empty_bins' => count($emptyBins), 'error_count' => count($errors),
+], "Imported {$filename} — " . count($clean) . ' rows, ' . count($emptyBins) . ' empty bins');
 
 Response::ok([
     'batch_id' => $batchId,
     'imported_rows' => count($clean),
+    'empty_bins' => count($emptyBins),
     'error_count' => count($errors),
     'errors' => array_slice($errors, 0, 100),
 ]);

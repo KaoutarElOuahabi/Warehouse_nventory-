@@ -17,7 +17,7 @@ $alreadyInstalled = file_exists($configPath);
 // otherwise anyone who finds /install/ could repoint the app at their own DB.
 $runtimeDbHost = getenv('MYSQLHOST') ?: getenv('DB_HOST');
 $runtimeDbName = getenv('MYSQL_DATABASE') ?: getenv('MYSQLDATABASE') ?: getenv('DB_NAME') ?: getenv('DB_DATABASE');
-$runtimeDbConfigured = $runtimeDbHost && $runtimeDbName;
+$runtimeDbConfigured = ($runtimeDbHost && $runtimeDbName) || getenv('DATABASE_URL') || getenv('MYSQL_URL');
 
 $errors = [];
 $success = null;
