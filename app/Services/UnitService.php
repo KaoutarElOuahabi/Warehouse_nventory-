@@ -74,21 +74,63 @@ class UnitService
      * Validates a quantity string against the rules for a given unit.
      * Returns ['valid' => bool, 'value' => float|null, 'error' => string|null]
      */
+    public static function parseNumericInput($rawQuantity): ?float
+    {
+        if ($rawQuantity === null) {
+            return null;
+        }
+
+        if (is_int($rawQuantity) || is_float($rawQuantity)) {
+            return (float)$rawQuantity;
+        }
+
+        if (!is_string($rawQuantity)) {
+            return is_numeric($rawQuantity) ? (float)$rawQuantity : null;
+        }
+
+        $value = trim($rawQuantity);
+        if ($value === '') {
+            return 0.0;
+        }
+
+        $value = str_replace(' ', '', $value);
+        if (strpos($value, ',') !== false && strpos($value, '.') !== false) {
+            $lastComma = strrpos($value, ',');
+            $lastDot = strrpos($value, '.');
+            if ($lastComma > $lastDot) {
+                $value = str_replace('.', '', $value);
+                $value = str_replace(',', '.', $value);
+            } else {
+                $value = str_replace(',', '', $value);
+            }
+        } elseif (strpos($value, ',') !== false) {
+            $parts = explode(',', $value);
+            if (count($parts) > 2) {
+                $value = implode('', $parts);
+            } else {
+                $value = str_replace(',', '.', $value);
+            }
+        }
+
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        return (float)$value;
+    }
+
     public static function validateQuantity($rawQuantity, string $unit): array
     {
         if ($rawQuantity === null) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity is required.'];
         }
 
-        if (is_string($rawQuantity) && trim($rawQuantity) === '') {
-            $rawQuantity = 0;
-        }
-
-        if (!is_numeric($rawQuantity)) {
+        $parsed = self::parseNumericInput($rawQuantity);
+        if ($parsed === null) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity must be a number.'];
         }
-        $value = (float)$rawQuantity;
 
+        $value = $parsed;
         if ($value < 0) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity cannot be negative.'];
         }

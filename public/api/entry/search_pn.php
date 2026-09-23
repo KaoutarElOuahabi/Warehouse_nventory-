@@ -8,7 +8,7 @@ use App\Services\StockLookupService;
 Auth::requireRole('entry', 'control', 'admin');
 
 $q = trim((string)($_GET['q'] ?? ''));
-if ($q === '' || strlen($q) < 2) {
+if ($q === '') {
     Response::ok(['results' => []]);
 }
 

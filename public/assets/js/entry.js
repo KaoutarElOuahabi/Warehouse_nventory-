@@ -90,6 +90,14 @@ function onHuScanned(value) {
   lookupHu(value);
 }
 
+function normalizeNumericValue(raw) {
+  const text = String(raw ?? '').trim();
+  if (text === '') return null;
+  const cleaned = text.replace(/\s+/g, '').replace(/,/g, '.');
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
 function onAddressInput(e) {
   const q = e.target.value.trim();
   const msg = document.getElementById('addressMsg');
@@ -325,8 +333,13 @@ async function onConfirmClick() {
 
   if (!form.hu_not_available && !form.hu) { banner.innerHTML = '<div class="banner err">Scan or enter a Handling Unit, or check "HU NOT AVAILABLE".</div>'; return; }
   if (!form.part_number) { banner.innerHTML = '<div class="banner err">Part Number is required.</div>'; return; }
-  if (form.quantity === '' || form.quantity === null || form.quantity === undefined) { banner.innerHTML = '<div class="banner err">Quantity is required.</div>'; return; }
-  if (Number(form.quantity) < 0) { banner.innerHTML = '<div class="banner err">Quantity cannot be negative.</div>'; return; }
+
+  const quantityValue = normalizeNumericValue(form.quantity);
+  if (form.quantity === '' || form.quantity === null || form.quantity === undefined || quantityValue === null) {
+    banner.innerHTML = '<div class="banner err">Quantity is required and must be numeric.</div>'; return;
+  }
+  if (quantityValue < 0) { banner.innerHTML = '<div class="banner err">Quantity cannot be negative.</div>'; return; }
+  form.quantity = String(quantityValue);
 
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true;
