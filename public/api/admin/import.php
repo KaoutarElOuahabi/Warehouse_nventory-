@@ -95,7 +95,13 @@ try {
     $pdo = Database::connection();
     $pdo->beginTransaction();
 
-    // Deactivate previous batch(es) — only one active stock snapshot at a time.
+    // Replace the previous active stock snapshot instead of accumulating stale rows.
+    $pdo->exec(
+        'DELETE FROM expected_stock
+         WHERE batch_id IN (SELECT id FROM import_batches WHERE is_active = 1)'
+    );
+
+    // Keep the historical batch record but leave only the latest import as the active snapshot.
     $pdo->exec("UPDATE import_batches SET is_active = 0 WHERE is_active = 1");
 
     $stmt = $pdo->prepare(
@@ -116,6 +122,7 @@ try {
 
     $addressCache = [];
     $now = Database::now();
+    $pdo->exec("UPDATE addresses SET known_in_stock = 0");
     foreach ($clean as $row) {
         if (!isset($addressCache[$row['address']])) {
             $addr = AddressService::getOrCreate($row['address']);

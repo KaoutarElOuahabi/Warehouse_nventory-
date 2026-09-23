@@ -88,6 +88,11 @@ class Auth
     public static function requireAuth(): array
     {
         if (!self::check()) {
+            $requestUri = $_SERVER['REQUEST_URI'] ?? '';
+            if (strpos($requestUri, '/api/') === false) {
+                header('Location: /');
+                exit;
+            }
             Response::error('Not authenticated. Please log in again.', 401);
         }
         return self::user();
@@ -98,6 +103,11 @@ class Auth
     {
         $user = self::requireAuth();
         if (!in_array($user['role'], $roles, true)) {
+            $requestUri = $_SERVER['REQUEST_URI'] ?? '';
+            if (strpos($requestUri, '/api/') === false) {
+                header('Location: /');
+                exit;
+            }
             Response::error('You do not have permission to perform this action.', 403);
         }
         return $user;
