@@ -27,7 +27,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
   <div class="card" id="addressCard">
     <label class="mt-0">ADDRESS</label>
     <div class="scan-row">
-      <input type="text" id="addressInput" placeholder="Type or scan address" autocomplete="off">
+      <input type="text" id="addressInput" placeholder="Address format: A-01-01" autocomplete="off">
       <button class="btn-secondary" id="scanAddressBtn">📷 Scan</button>
     </div>
     <div id="addressSuggestions"></div>
@@ -46,7 +46,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
     <div class="card">
       <label class="mt-0">HANDLING UNIT</label>
       <div class="scan-row">
-        <input type="text" id="huInput" placeholder="Scan or type HU" autocomplete="off">
+        <input type="text" id="huInput" placeholder="HU number, e.g. 300660525" autocomplete="off">
         <button class="btn-secondary" id="scanHuBtn">📷 Scan</button>
       </div>
 

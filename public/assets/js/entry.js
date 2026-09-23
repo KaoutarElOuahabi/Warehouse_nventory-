@@ -7,6 +7,39 @@ let pnSearchTimer = null;
 let html5QrCode = null;
 let cameraTargetInput = null;
 
+function looksLikeAddressCode(value) {
+  return /^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/i.test(String(value || '').trim());
+}
+
+function warnIfHuTypedAsAddress(value) {
+  const msg = document.getElementById('addressMsg');
+  if (!value || looksLikeAddressCode(value)) {
+    if (msg) msg.textContent = '';
+    return false;
+  }
+
+  const isHuLike = /^\d{6,}$/.test(String(value).trim()) || /^[A-Z0-9]{6,}$/.test(String(value).trim());
+  if (isHuLike && msg) {
+    msg.textContent = 'This looks like a Handling Unit, not an address. Use a known address from the list, e.g. A-01-01.';
+    return true;
+  }
+
+  if (msg) msg.textContent = 'Select a known address from the list. Address format example: A-01-01.';
+  return true;
+}
+
+async function isKnownAddressMatch(code) {
+  const normalized = String(code || '').trim();
+  if (!normalized) return false;
+  try {
+    const data = await apiGet('/api/entry/search_address.php?q=' + encodeURIComponent(normalized));
+    const matches = data.results || [];
+    return matches.some((row) => String(row.code).toUpperCase() === normalized.toUpperCase());
+  } catch (e) {
+    return false;
+  }
+}
+
 (async function init() {
   const user = await requireSession(['entry', 'control', 'admin']);
   if (!user) return;
@@ -59,11 +92,20 @@ function onHuScanned(value) {
 
 function onAddressInput(e) {
   const q = e.target.value.trim();
+  const msg = document.getElementById('addressMsg');
   clearTimeout(addressSearchTimer);
+
   if (!q) {
+    document.getElementById('addressSuggestions').innerHTML = '';
+    if (msg) msg.textContent = '';
+    return;
+  }
+
+  if (warnIfHuTypedAsAddress(q)) {
     document.getElementById('addressSuggestions').innerHTML = '';
     return;
   }
+
   addressSearchTimer = setTimeout(async () => {
     try {
       const data = await apiGet('/api/entry/search_address.php?q=' + encodeURIComponent(q));
@@ -97,6 +139,17 @@ async function setAddress() {
   const code = document.getElementById('addressInput').value.trim();
   const msg = document.getElementById('addressMsg');
   if (!code) { msg.textContent = 'Enter or scan an address.'; return; }
+  if (!looksLikeAddressCode(code)) {
+    msg.textContent = 'Select a known address from the list. HU values are not valid addresses.';
+    return;
+  }
+
+  const exactMatch = await isKnownAddressMatch(code);
+  if (!exactMatch) {
+    msg.textContent = 'Address not found in master data. Select a valid address from the list.';
+    return;
+  }
+
   msg.textContent = 'Loading…';
   try {
     const data = await apiPost('/api/entry/address.php', { code });

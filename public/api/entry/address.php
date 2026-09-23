@@ -13,9 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data = json_body();
 require_fields($data, ['code']);
-$code = trim((string)$data['code']);
+$code = strtoupper(trim((string)$data['code']));
 if ($code === '') {
     Response::error('Address code cannot be empty.', 422);
+}
+if (!preg_match('/^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/', $code)) {
+    Response::error('Address format invalid. Use a known address like A-01-01. HU numbers are not valid addresses.', 422);
 }
 
 $address = AddressService::findByCode($code);
