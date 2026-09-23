@@ -84,10 +84,12 @@ CREATE TABLE IF NOT EXISTS physical_counts (
     last_edited_by INT NULL,
     last_edited_at DATETIME NULL,
     control_note TEXT NULL,
+    hu_active VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN is_deleted = 0 THEN hu ELSE NULL END) VIRTUAL,
     CONSTRAINT fk_phys_addr FOREIGN KEY (address_id) REFERENCES addresses(id) ON DELETE CASCADE,
     CONSTRAINT fk_phys_entered_by FOREIGN KEY (entered_by) REFERENCES users(id),
     INDEX idx_phys_addr (address_id),
-    INDEX idx_phys_hu (hu)
+    INDEX idx_phys_hu (hu),
+    UNIQUE KEY uniq_active_addr_hu (address_id, hu_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS audit_log (

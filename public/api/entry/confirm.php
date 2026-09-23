@@ -80,6 +80,7 @@ try {
     $quantity = $validation['value'];
 
     $pdo = Database::connection();
+    $now = Database::now();
 
     $existing = null;
     if (!$huNotAvailable && $hu !== '') {
@@ -90,27 +91,56 @@ try {
         $existing = $stmt->fetch() ?: null;
     }
 
-    $now = Database::now();
-
-    if ($existing) {
-        $before = $existing;
-        $stmt = $pdo->prepare(
-            'UPDATE physical_counts SET part_number = :pn, unit = :unit, quantity = :qty,
-             last_edited_by = :uid, last_edited_at = :now WHERE id = :id'
-        );
-        $stmt->execute([
-            ':pn' => $partNumber, ':unit' => $authoritativeUnit, ':qty' => $quantity,
-            ':uid' => $user['id'], ':now' => $now, ':id' => $existing['id'],
-        ]);
-        $physicalId = (int)$existing['id'];
-        AuditService::log('physical_count', $physicalId, 'entry_updated', $user, $before, [
-            'part_number' => $partNumber, 'unit' => $authoritativeUnit, 'quantity' => $quantity,
-        ], "Address $addressCode / HU $hu re-scanned by data entry");
+    if (Database::driver() === 'sqlite') {
+        // Local testing only (never concurrent multi-user traffic) — plain
+        // select-then-write is fine here.
+        if ($existing) {
+            $stmt = $pdo->prepare(
+                'UPDATE physical_counts SET part_number = :pn, unit = :unit, quantity = :qty,
+                 last_edited_by = :uid, last_edited_at = :now WHERE id = :id'
+            );
+            $stmt->execute([
+                ':pn' => $partNumber, ':unit' => $authoritativeUnit, ':qty' => $quantity,
+                ':uid' => $user['id'], ':now' => $now, ':id' => $existing['id'],
+            ]);
+            $physicalId = (int)$existing['id'];
+        } else {
+            $stmt = $pdo->prepare(
+                'INSERT INTO physical_counts
+                 (address_id, hu, hu_not_available, part_number, unit, quantity, source, entered_by, entered_at, is_deleted)
+                 VALUES (:aid, :hu, :huna, :pn, :unit, :qty, :src, :uid, :now, 0)'
+            );
+            $stmt->execute([
+                ':aid' => $addressId,
+                ':hu' => ($huNotAvailable || $hu === '') ? null : $hu,
+                ':huna' => $huNotAvailable ? 1 : 0,
+                ':pn' => $partNumber,
+                ':unit' => $authoritativeUnit,
+                ':qty' => $quantity,
+                ':src' => 'data_entry',
+                ':uid' => $user['id'],
+                ':now' => $now,
+            ]);
+            $physicalId = (int)Database::lastInsertId();
+        }
     } else {
+        // MySQL (production): atomic upsert keyed on the (address_id, hu_active)
+        // uniqueness guard added by migrate.php. Two concurrent submits for the
+        // same HU can no longer both insert — the second one updates the row
+        // the first one just created instead of creating a duplicate.
+        // `id = LAST_INSERT_ID(id)` makes lastInsertId() return the right row's
+        // id whether this statement inserted or updated.
         $stmt = $pdo->prepare(
             'INSERT INTO physical_counts
              (address_id, hu, hu_not_available, part_number, unit, quantity, source, entered_by, entered_at, is_deleted)
-             VALUES (:aid, :hu, :huna, :pn, :unit, :qty, :src, :uid, :now, 0)'
+             VALUES (:aid, :hu, :huna, :pn, :unit, :qty, :src, :uid, :now, 0)
+             ON DUPLICATE KEY UPDATE
+               id = LAST_INSERT_ID(id),
+               part_number = VALUES(part_number),
+               unit = VALUES(unit),
+               quantity = VALUES(quantity),
+               last_edited_by = VALUES(entered_by),
+               last_edited_at = VALUES(entered_at)'
         );
         $stmt->execute([
             ':aid' => $addressId,
@@ -124,6 +154,13 @@ try {
             ':now' => $now,
         ]);
         $physicalId = (int)Database::lastInsertId();
+    }
+
+    if ($existing) {
+        AuditService::log('physical_count', $physicalId, 'entry_updated', $user, $existing, [
+            'part_number' => $partNumber, 'unit' => $authoritativeUnit, 'quantity' => $quantity,
+        ], "Address $addressCode / HU $hu re-scanned by data entry");
+    } else {
         AuditService::log('physical_count', $physicalId, 'entry_created', $user, null, [
             'address_code' => $addressCode, 'hu' => $hu ?: null, 'hu_not_available' => $huNotAvailable,
             'part_number' => $partNumber, 'unit' => $authoritativeUnit, 'quantity' => $quantity,

@@ -38,6 +38,34 @@ try {
         $pdo->exec($statement . ';');
     }
 
+    // physical_counts may already exist from before this uniqueness guard was
+    // introduced (CREATE TABLE IF NOT EXISTS above is a no-op on it in that
+    // case). Add it here so two concurrent submits for the same address+HU
+    // can no longer both insert instead of one inserting and one updating.
+    // Non-fatal: if pre-existing duplicate rows make the ALTER fail, deploy
+    // still proceeds — clear those duplicates and redeploy to pick it up.
+    try {
+        $hasCol = $pdo->query(
+            "SELECT COUNT(*) c FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'physical_counts' AND column_name = 'hu_active'"
+        )->fetch();
+        if ((int)$hasCol['c'] === 0) {
+            $pdo->exec(
+                "ALTER TABLE physical_counts
+                 ADD COLUMN hu_active VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN is_deleted = 0 THEN hu ELSE NULL END) VIRTUAL"
+            );
+        }
+        $hasIdx = $pdo->query(
+            "SELECT COUNT(*) c FROM information_schema.statistics
+             WHERE table_schema = DATABASE() AND table_name = 'physical_counts' AND index_name = 'uniq_active_addr_hu'"
+        )->fetch();
+        if ((int)$hasIdx['c'] === 0) {
+            $pdo->exec('ALTER TABLE physical_counts ADD UNIQUE KEY uniq_active_addr_hu (address_id, hu_active)');
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, '[migrate] warning: could not add physical_counts uniqueness guard: ' . $e->getMessage() . PHP_EOL);
+    }
+
     echo "Migration complete. Schema is ready for $database.\n";
 } catch (Throwable $e) {
     fwrite(STDERR, '[migrate] ' . $e->getMessage() . PHP_EOL);
