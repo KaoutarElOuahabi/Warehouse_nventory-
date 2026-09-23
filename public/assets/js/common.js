@@ -1,29 +1,35 @@
-async function apiPost(url, body) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || 'Request failed');
+async function apiRequest(url, options) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (e) {
+    throw new Error('No connection to the server. Check the network, then check the recorded lines before trying again.');
+  }
+  const data = await res.json().catch(() => null);
+  if (res.status === 401 && !url.startsWith('/api/login.php')) {
+    alert('Your session has expired. Please log in again.');
+    window.location.href = '/';
+    throw new Error('Session expired. Please log in again.');
+  }
+  if (!res.ok || data === null) {
+    const err = new Error((data && data.error) || `Server not reachable right now (error ${res.status}). Please try again in a moment.`);
     err.status = res.status;
-    err.data = data;
+    err.data = data || {};
     throw err;
   }
   return data;
 }
 
-async function apiGet(url) {
-  const res = await fetch(url);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || 'Request failed');
-    err.status = res.status;
-    err.data = data;
-    throw err;
-  }
-  return data;
+function apiPost(url, body) {
+  return apiRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+function apiGet(url) {
+  return apiRequest(url);
 }
 
 async function requireSession(allowedRoles) {

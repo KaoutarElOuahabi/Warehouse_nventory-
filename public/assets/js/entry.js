@@ -455,7 +455,11 @@ async function onConfirmClick() {
           <button class="btn-danger" style="flex:1" id="forceConfirmBtn">CONFIRM PHYSICAL COUNT</button>
         </div>`;
       document.getElementById('recheckBtn').addEventListener('click', () => { showBanner('', ''); document.getElementById('quantityInput').focus(); });
-      document.getElementById('forceConfirmBtn').addEventListener('click', () => saveCount(form));
+      document.getElementById('forceConfirmBtn').addEventListener('click', (ev) => {
+        ev.currentTarget.disabled = true;
+        document.getElementById('recheckBtn').disabled = true;
+        saveCount(form);
+      });
     } else {
       await saveCount(form);
     }
@@ -470,17 +474,20 @@ async function saveCount(form) {
   try {
     const res = await apiPost('/api/entry/confirm.php', form);
     const recorded = `${form.hu || 'NO HU'} · ${formatQty(parseQuantityText(form.quantity).value)} ${res.unit}`;
+    resetHuForm();
     showBanner(res.signal === 'DIFFERENCE' ? 'warn' : 'ok',
       res.signal === 'DIFFERENCE' ? `⚠ Recorded (${recorded}) — difference noted for Control.` : `✓ COUNT RECORDED (${recorded})`);
     await refreshCounts();
-    setTimeout(() => { if (currentAddressCode) resetHuForm(); }, 900);
   } catch (e) {
     showBanner('err', e.message);
+    // The save may have reached the server before the connection dropped:
+    // show the real list so the counter can see whether to retry.
+    await refreshCounts(true);
   }
 }
 
 // ---------- Recorded lines (edit / delete own lines) ----------
-async function refreshCounts() {
+async function refreshCounts(keepBanner = false) {
   if (!currentAddressCode) return;
   try {
     const data = await apiGet('/api/entry/my_counts.php?address_code=' + encodeURIComponent(currentAddressCode));
@@ -503,7 +510,7 @@ async function refreshCounts() {
         </div>
       </div>`).join('');
   } catch (e) {
-    showBanner('err', 'Could not load the recorded lines: ' + e.message);
+    if (!keepBanner) showBanner('err', 'Could not load the recorded lines: ' + e.message);
   }
 }
 
