@@ -74,6 +74,15 @@ async function setAddress() {
   }
 }
 
+function openEntryForAddress(addressCode) {
+  currentAddressCode = addressCode;
+  document.getElementById('currentAddress').textContent = currentAddressCode;
+  document.getElementById('addressCard').style.display = 'none';
+  document.getElementById('entryCard').style.display = 'block';
+  resetHuForm();
+  refreshCounts();
+}
+
 function changeAddress() {
   document.getElementById('entryCard').style.display = 'none';
   document.getElementById('addressCard').style.display = 'block';
@@ -154,6 +163,9 @@ async function lookupHu(hu) {
   try {
     const data = await apiPost('/api/entry/scan_hu.php', { hu });
     if (data.found) {
+      if (!currentAddressCode && data.address_code) {
+        openEntryForAddress(data.address_code);
+      }
       huFoundLocked = true;
       manualUnitMode = false;
       togglePnMode(false);

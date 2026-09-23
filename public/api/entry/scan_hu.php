@@ -18,13 +18,12 @@ $hu = trim((string)$data['hu']);
 $row = StockLookupService::findByHu($hu);
 
 if (!$row) {
-    // Spec 6: unknown HU — do not block, ask for PN + qty manually.
     Response::ok(['found' => false]);
 }
 
-// Spec 2 & 15: NEVER include quantity here — Data Entry must not see expected qty.
 Response::ok([
     'found' => true,
+    'address_code' => $row['address_code'],
     'part_number' => $row['part_number'],
     'unit' => $row['unit'],
 ]);

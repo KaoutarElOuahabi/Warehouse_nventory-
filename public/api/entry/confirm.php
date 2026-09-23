@@ -38,8 +38,16 @@ if ($partNumber === '') {
     Response::error('Part Number is required.', 422);
 }
 
+$masterPart = StockLookupService::findPartByNumber($partNumber);
+if (!$masterPart) {
+    Response::error('Part Number is not in master data. Only known part numbers are allowed.', 422);
+}
+
 try {
-    $address = AddressService::getOrCreate($addressCode);
+    $address = AddressService::findByCode($addressCode);
+    if (!$address) {
+        Response::error('Address not found in master data. Use a known address from the imported stock.', 422);
+    }
     $addressId = (int)$address['id'];
     AddressService::markInProgress($addressId);
 
@@ -53,7 +61,7 @@ try {
         }
     }
     if ($authoritativeUnit === null) {
-        $authoritativeUnit = StockLookupService::unitForPartNumber($partNumber);
+        $authoritativeUnit = $masterPart['unit'];
     }
     if ($authoritativeUnit === null) {
         $authoritativeUnit = $clientUnit !== '' ? UnitService::normalize($clientUnit) : 'PCS';

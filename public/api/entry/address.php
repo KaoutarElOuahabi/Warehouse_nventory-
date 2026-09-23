@@ -18,8 +18,11 @@ if ($code === '') {
     Response::error('Address code cannot be empty.', 422);
 }
 
-// Spec 1: the address does NOT need to exist in imported stock — never block.
-$address = AddressService::getOrCreate($code);
+$address = AddressService::findByCode($code);
+if (!$address) {
+    Response::error('Address not found in master data. Use a known address from the imported stock.', 422);
+}
+
 AddressService::markInProgress((int)$address['id']);
 $address = AddressService::findById((int)$address['id']);
 
