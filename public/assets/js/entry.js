@@ -1,6 +1,7 @@
 let currentAddressCode = null;
 let huFoundLocked = false; // true when PN was auto-filled from a known HU (PN becomes non-editable)
 let manualUnitMode = false;
+let addressSearchTimer = null;
 let pnSearchTimer = null;
 
 let html5QrCode = null;
@@ -12,6 +13,7 @@ let cameraTargetInput = null;
 
   document.getElementById('scanAddressBtn').addEventListener('click', () => openCamera('addressInput', 'Scan Address barcode'));
   document.getElementById('setAddressBtn').addEventListener('click', setAddress);
+  document.getElementById('addressInput').addEventListener('input', onAddressInput);
   document.getElementById('addressInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') setAddress(); });
 
   document.getElementById('scanHuBtn').addEventListener('click', () => openCamera('huInput', 'Scan HU barcode', onHuScanned));
@@ -53,6 +55,42 @@ function closeCamera() {
 
 function onHuScanned(value) {
   lookupHu(value);
+}
+
+function onAddressInput(e) {
+  const q = e.target.value.trim();
+  clearTimeout(addressSearchTimer);
+  if (!q) {
+    document.getElementById('addressSuggestions').innerHTML = '';
+    return;
+  }
+  addressSearchTimer = setTimeout(async () => {
+    try {
+      const data = await apiGet('/api/entry/search_address.php?q=' + encodeURIComponent(q));
+      renderAddressSuggestions(data.results || []);
+    } catch (e) {
+      document.getElementById('addressSuggestions').innerHTML = '';
+    }
+  }, 120);
+}
+
+function renderAddressSuggestions(results) {
+  const box = document.getElementById('addressSuggestions');
+  if (!results.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = '<div class="card" style="padding:8px;margin-top:6px">' +
+    results.map(r => `<div class="list-item" style="margin-bottom:4px" onclick="selectAddress('${escapeHtml(r.code)}')">
+      <span class="code">${escapeHtml(r.code)}</span>
+    </div>`).join('') +
+    '</div>';
+}
+
+function selectAddress(code) {
+  document.getElementById('addressInput').value = code;
+  document.getElementById('addressSuggestions').innerHTML = '';
+  setAddress();
 }
 
 async function setAddress() {
@@ -190,13 +228,13 @@ async function lookupHu(hu) {
 function onPnInput(e) {
   const q = e.target.value.trim();
   clearTimeout(pnSearchTimer);
-  if (q.length < 2) { document.getElementById('pnSuggestions').innerHTML = ''; return; }
+  if (!q) { document.getElementById('pnSuggestions').innerHTML = ''; return; }
   pnSearchTimer = setTimeout(async () => {
     try {
       const data = await apiGet('/api/entry/search_pn.php?q=' + encodeURIComponent(q));
       renderPnSuggestions(data.results);
     } catch (e) {}
-  }, 250);
+  }, 120);
 }
 
 function renderPnSuggestions(results) {

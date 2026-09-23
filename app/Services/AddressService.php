@@ -64,6 +64,19 @@ class AddressService
         $stmt->execute($params);
     }
 
+    public static function searchByCode(string $query, int $limit = 12): array
+    {
+        $pdo = Database::connection();
+        $like = '%' . $query . '%';
+        $stmt = $pdo->prepare(
+            'SELECT code FROM addresses WHERE code LIKE :q ORDER BY code LIMIT :lim'
+        );
+        $stmt->bindValue(':q', $like);
+        $stmt->bindValue(':lim', $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
     public static function listAll(?string $statusFilter = null): array
     {
         $pdo = Database::connection();

@@ -30,6 +30,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
       <input type="text" id="addressInput" placeholder="Type or scan address" autocomplete="off">
       <button class="btn-secondary" id="scanAddressBtn">📷 Scan</button>
     </div>
+    <div id="addressSuggestions"></div>
     <button class="btn-primary btn-block" id="setAddressBtn">Start / Continue</button>
     <div id="addressMsg" class="hint"></div>
   </div>
