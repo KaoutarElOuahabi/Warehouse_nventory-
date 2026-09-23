@@ -41,3 +41,14 @@ function require_fields(array $data, array $fields): void
         }
     }
 }
+
+/** Rejects address-shaped or garbage values passed as a Handling Unit code. */
+function validate_hu_format(string $hu): void
+{
+    if (preg_match('/^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/i', $hu)) {
+        Response::error('This looks like an Address, not a Handling Unit.', 422);
+    }
+    if (!preg_match('/^[A-Z0-9]{3,32}$/i', $hu)) {
+        Response::error('Handling Unit format is invalid.', 422);
+    }
+}

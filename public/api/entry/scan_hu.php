@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $data = json_body();
 require_fields($data, ['hu']);
 $hu = trim((string)$data['hu']);
+validate_hu_format($hu);
 
 $row = StockLookupService::findByHu($hu);
 

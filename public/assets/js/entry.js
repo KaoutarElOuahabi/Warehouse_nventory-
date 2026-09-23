@@ -6,9 +6,33 @@ let pnSearchTimer = null;
 
 let html5QrCode = null;
 let cameraTargetInput = null;
+let masterUnits = [];
+
+async function loadUnits() {
+  try {
+    const data = await apiGet('/api/entry/units.php');
+    masterUnits = data.units && data.units.length ? data.units : ['PCS'];
+  } catch (e) {
+    masterUnits = ['PCS'];
+  }
+}
 
 function looksLikeAddressCode(value) {
   return /^[A-Z]-[A-Z0-9]+(?:-[A-Z0-9]+)*$/i.test(String(value || '').trim());
+}
+
+// Returns an error message if the value isn't a plausible Handling Unit code
+// (address-shaped values or garbage typed into the HU field), or null if OK.
+function huFormatError(value) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  if (looksLikeAddressCode(v)) {
+    return 'This looks like an Address, not a Handling Unit. Enter the HU code instead.';
+  }
+  if (!/^[A-Z0-9]{3,32}$/i.test(v)) {
+    return 'Handling Unit format looks invalid. Use letters/numbers only, e.g. 300660525.';
+  }
+  return null;
 }
 
 function warnIfHuTypedAsAddress(value) {
@@ -44,12 +68,15 @@ async function isKnownAddressMatch(code) {
   const user = await requireSession(['entry', 'control', 'admin']);
   if (!user) return;
 
+  await loadUnits();
+
   document.getElementById('scanAddressBtn').addEventListener('click', () => openCamera('addressInput', 'Scan Address barcode'));
   document.getElementById('setAddressBtn').addEventListener('click', setAddress);
   document.getElementById('addressInput').addEventListener('input', onAddressInput);
   document.getElementById('addressInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') setAddress(); });
 
   document.getElementById('scanHuBtn').addEventListener('click', () => openCamera('huInput', 'Scan HU barcode', onHuScanned));
+  document.getElementById('huInput').addEventListener('input', onHuInput);
   document.getElementById('huInput').addEventListener('change', () => lookupHu(document.getElementById('huInput').value.trim()));
   document.getElementById('huInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lookupHu(e.target.value.trim()); } });
 
@@ -88,6 +115,12 @@ function closeCamera() {
 
 function onHuScanned(value) {
   lookupHu(value);
+}
+
+function onHuInput(e) {
+  const msg = document.getElementById('huMsg');
+  if (!msg) return;
+  msg.textContent = huFormatError(e.target.value) || '';
 }
 
 function normalizeNumericValue(raw) {
@@ -193,6 +226,7 @@ function changeAddress() {
 function resetHuForm() {
   document.getElementById('huInput').value = '';
   document.getElementById('huInput').disabled = false;
+  document.getElementById('huMsg').textContent = '';
   document.getElementById('huNotAvailable').checked = false;
   document.getElementById('pnInput').value = '';
   document.getElementById('quantityInput').value = '';
@@ -220,10 +254,9 @@ function showAutoPnField(text, empty) {
 function setUnitField(text, empty) {
   const wrap = document.getElementById('unitField');
   if (manualUnitMode) {
-    wrap.outerHTML = `<select id="unitField" class="readonly-field">
-      <option value="PCS">PCS</option><option value="KG">KG</option>
-      <option value="M">M (Meter)</option><option value="L">L (Liter)</option>
-      <option value="ROLLS">Rolls</option></select>`;
+    const units = masterUnits.length ? masterUnits : ['PCS'];
+    const options = units.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+    wrap.outerHTML = `<select id="unitField" class="readonly-field">${options}</select>`;
   } else {
     if (wrap.tagName === 'SELECT') {
       wrap.outerHTML = `<div class="readonly-field" id="unitField"></div>`;
@@ -259,6 +292,13 @@ function onHuNotAvailableToggle() {
 async function lookupHu(hu) {
   if (!hu || document.getElementById('huNotAvailable').checked) return;
   document.getElementById('entryBanner').innerHTML = '';
+  const msg = document.getElementById('huMsg');
+  const formatError = huFormatError(hu);
+  if (formatError) {
+    if (msg) msg.textContent = formatError;
+    return;
+  }
+  if (msg) msg.textContent = '';
   try {
     const data = await apiPost('/api/entry/scan_hu.php', { hu });
     if (data.found) {

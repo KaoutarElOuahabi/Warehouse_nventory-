@@ -63,7 +63,10 @@ function onPreview() {
     try {
       const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      // raw: false forces SheetJS to return the cell's formatted text instead of
+      // parsing numeric-looking codes (Address/HU/Part Number) into JS numbers,
+      // which was silently dropping leading zeros (e.g. "300660525").
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
       parsedRows = json.map(r => normalizeRow(r));
       const data = await apiPost('/api/admin/import.php', { rows: parsedRows, filename: parsedFilename, mode: 'preview' });
       renderPreview(data);

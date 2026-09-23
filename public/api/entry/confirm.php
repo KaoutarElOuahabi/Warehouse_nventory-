@@ -34,6 +34,9 @@ $clientUnit = isset($data['unit']) ? trim((string)$data['unit']) : '';
 if (!$huNotAvailable && $hu === '') {
     Response::error('Handling Unit is required unless "HU NOT AVAILABLE" is checked.', 422);
 }
+if (!$huNotAvailable) {
+    validate_hu_format($hu);
+}
 if ($partNumber === '') {
     Response::error('Part Number is required.', 422);
 }
@@ -64,7 +67,10 @@ try {
         $authoritativeUnit = $masterPart['unit'];
     }
     if ($authoritativeUnit === null) {
-        $authoritativeUnit = $clientUnit !== '' ? UnitService::normalize($clientUnit) : 'PCS';
+        if ($clientUnit === '') {
+            Response::error('Unit of measure could not be determined from master data. Please select a unit manually.', 422);
+        }
+        $authoritativeUnit = UnitService::normalize($clientUnit);
     }
 
     $validation = UnitService::validateQuantity($rawQuantity, $authoritativeUnit);

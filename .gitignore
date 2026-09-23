@@ -1,0 +1,7 @@
+/config/config.php
+/storage/*.sqlite
+/storage/*.sqlite-journal
+/storage/logs/*.log
+/vendor/
+.DS_Store
+Thumbs.db

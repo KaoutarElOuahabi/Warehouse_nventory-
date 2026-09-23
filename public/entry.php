@@ -49,6 +49,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
         <input type="text" id="huInput" placeholder="HU number, e.g. 300660525" autocomplete="off">
         <button class="btn-secondary" id="scanHuBtn">📷 Scan</button>
       </div>
+      <div id="huMsg" class="hint"></div>
 
       <div class="checkbox-row">
         <input type="checkbox" id="huNotAvailable">

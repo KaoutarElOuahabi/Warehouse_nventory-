@@ -11,10 +11,18 @@ ini_set('display_errors', '1');
 $configPath = __DIR__ . '/../../config/config.php';
 $alreadyInstalled = file_exists($configPath);
 
+// Railway (and any other managed host) injects DB connection info via env vars
+// at runtime. If those are present, this is a live deployment and the wizard
+// must never be allowed to run, regardless of whether config.php exists yet —
+// otherwise anyone who finds /install/ could repoint the app at their own DB.
+$runtimeDbHost = getenv('MYSQLHOST') ?: getenv('DB_HOST');
+$runtimeDbName = getenv('MYSQL_DATABASE') ?: getenv('MYSQLDATABASE') ?: getenv('DB_NAME') ?: getenv('DB_DATABASE');
+$runtimeDbConfigured = $runtimeDbHost && $runtimeDbName;
+
 $errors = [];
 $success = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyInstalled) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyInstalled && !$runtimeDbConfigured) {
     $driver = $_POST['driver'] ?? 'mysql';
     $host = trim($_POST['host'] ?? '127.0.0.1');
     $port = (int)($_POST['port'] ?? 3306);
@@ -117,7 +125,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyInstalled) {
 <div class="card">
 <h1>Warehouse Inventory — Setup</h1>
 
-<?php if ($alreadyInstalled && !$success): ?>
+<?php if ($runtimeDbConfigured && !$success): ?>
+  <div class="err">This environment has a database configured via runtime environment variables (production). The setup wizard is disabled here for security. If you need to (re)build the schema, run <code>migrate.php</code> from a deploy shell instead, then delete this <code>/install</code> folder.</div>
+<?php elseif ($alreadyInstalled && !$success): ?>
   <div class="err">This app is already installed. Delete <code>config/config.php</code> if you need to re-run setup, or go to <a href="../">the login page</a>.</div>
 <?php elseif ($success): ?>
   <div class="ok">
