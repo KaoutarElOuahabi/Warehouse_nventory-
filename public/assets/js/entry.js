@@ -272,7 +272,8 @@ async function onConfirmClick() {
 
   if (!form.hu_not_available && !form.hu) { banner.innerHTML = '<div class="banner err">Scan or enter a Handling Unit, or check "HU NOT AVAILABLE".</div>'; return; }
   if (!form.part_number) { banner.innerHTML = '<div class="banner err">Part Number is required.</div>'; return; }
-  if (!form.quantity) { banner.innerHTML = '<div class="banner err">Quantity is required.</div>'; return; }
+  if (form.quantity === '' || form.quantity === null || form.quantity === undefined) { banner.innerHTML = '<div class="banner err">Quantity is required.</div>'; return; }
+  if (Number(form.quantity) < 0) { banner.innerHTML = '<div class="banner err">Quantity cannot be negative.</div>'; return; }
 
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true;

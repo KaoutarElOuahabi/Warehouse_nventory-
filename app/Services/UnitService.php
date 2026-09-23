@@ -23,32 +23,42 @@ class UnitService
         'LTR' => 'L',
         'LITER' => 'L',
         'LITRE' => 'L',
+        'LM' => 'LM',
     ];
 
     private const WHOLE_UNITS = [
         'PCS' => 'PCS',
+        'PCE' => 'PCS',
         'PC' => 'PCS',
         'PIECE' => 'PCS',
         'PIECES' => 'PCS',
         'EA' => 'PCS',
         'EACH' => 'PCS',
+        'ST' => 'PCS',
+        'STK' => 'PCS',
+        'STUECK' => 'PCS',
         'ROLL' => 'ROLLS',
         'ROLLS' => 'ROLLS',
         'UN' => 'PCS',
         'UNIT' => 'PCS',
         'UNITS' => 'PCS',
+        'SET' => 'PCS',
+        'BOX' => 'PCS',
     ];
 
     public static function normalize(string $unit): string
     {
         $key = strtoupper(trim($unit));
+        if ($key === '') {
+            return '';
+        }
         if (isset(self::DECIMAL_UNITS[$key])) {
             return self::DECIMAL_UNITS[$key];
         }
         if (isset(self::WHOLE_UNITS[$key])) {
             return self::WHOLE_UNITS[$key];
         }
-        return $key !== '' ? $key : 'PCS';
+        return $key;
     }
 
     public static function allowsDecimal(string $unit): bool
@@ -66,16 +76,21 @@ class UnitService
      */
     public static function validateQuantity($rawQuantity, string $unit): array
     {
-        if ($rawQuantity === null || $rawQuantity === '') {
+        if ($rawQuantity === null) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity is required.'];
         }
+
+        if (is_string($rawQuantity) && trim($rawQuantity) === '') {
+            $rawQuantity = 0;
+        }
+
         if (!is_numeric($rawQuantity)) {
             return ['valid' => false, 'value' => null, 'error' => 'Quantity must be a number.'];
         }
         $value = (float)$rawQuantity;
 
-        if ($value <= 0) {
-            return ['valid' => false, 'value' => null, 'error' => 'Quantity must be greater than zero.'];
+        if ($value < 0) {
+            return ['valid' => false, 'value' => null, 'error' => 'Quantity cannot be negative.'];
         }
 
         if (!self::allowsDecimal($unit)) {

@@ -44,9 +44,12 @@ foreach ($rows as $r) {
     $unitRaw = trim((string)($r['unit'] ?? ''));
     $qtyRaw = $r['quantity'] ?? null;
 
-    if ($address === '' || $hu === '' || $pn === '' || $unitRaw === '' || $qtyRaw === null || $qtyRaw === '') {
-        $errors[] = "Row $lineNo: missing required value(s) (Address, HU, Part Number, Unit, Quantity are all required).";
+    if ($address === '' || $hu === '' || $pn === '' || $unitRaw === '') {
+        $errors[] = "Row $lineNo: missing required value(s) (Address, HU, Part Number, Unit are required).";
         continue;
+    }
+    if ($qtyRaw === null || (is_string($qtyRaw) && trim((string)$qtyRaw) === '')) {
+        $qtyRaw = 0;
     }
     if (!is_numeric($qtyRaw)) {
         $errors[] = "Row $lineNo: Quantity \"$qtyRaw\" is not a number.";
