@@ -22,14 +22,40 @@ $user = Auth::requireRole('admin');
 
 <div class="container-wide">
   <div class="tabs">
-    <button class="active" data-tab="dashboard">Dashboard</button>
+    <button class="active" data-tab="live">Live</button>
+    <button data-tab="dashboard">Dashboard</button>
     <button data-tab="import">Import Stock</button>
     <button data-tab="addresses">Addresses</button>
     <button data-tab="users">Users</button>
     <button data-tab="audit">Audit Trail</button>
   </div>
 
-  <div id="tab-dashboard" class="tab-panel">
+  <div id="tab-live" class="tab-panel">
+    <div class="live-head">
+      <span class="hint" id="liveUpdated">Loading…</span>
+      <button class="btn-secondary btn-sm" id="liveRefreshBtn">↻ Refresh</button>
+    </div>
+    <div class="card" id="liveOverall"></div>
+    <div class="card">
+      <h3 class="mt-0">🏆 Counters ranking</h3>
+      <div class="table-scroll" id="liveCounters"></div>
+      <p class="hint">Ranked by addresses completed; on a tie, the one sent to Control less often comes first. <b>First-time OK</b> = completed without needing Control.</p>
+    </div>
+    <div class="card">
+      <h3 class="mt-0">⚠️ Stuck addresses</h3>
+      <div id="liveStuck"></div>
+    </div>
+    <div class="card">
+      <h3 class="mt-0">📦 Progress per rack</h3>
+      <div class="table-scroll" id="liveRacks"></div>
+    </div>
+    <div class="card">
+      <h3 class="mt-0">🔍 Control</h3>
+      <div id="liveControl"></div>
+    </div>
+  </div>
+
+  <div id="tab-dashboard" class="tab-panel" style="display:none">
     <div class="stat-grid" id="statGrid"></div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">

@@ -13,18 +13,150 @@ let parsedFilename = null;
   document.getElementById('statusFilter').addEventListener('change', loadAddresses);
   document.getElementById('addressSearch').addEventListener('input', renderAddresses);
   document.getElementById('exportResultsBtn').addEventListener('click', exportResultsXlsx);
+  document.getElementById('liveRefreshBtn').addEventListener('click', loadLive);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && liveVisible()) loadLive(); });
+  setInterval(() => { if (!document.hidden && liveVisible()) loadLive(); }, LIVE_REFRESH_MS);
 
-  await loadDashboard();
+  await loadLive();
 })();
 
 function switchTab(tab) {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
   document.getElementById('tab-' + tab).style.display = 'block';
+  if (tab === 'live') loadLive();
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'addresses') loadAddresses();
   if (tab === 'users') loadUsers();
   if (tab === 'audit') loadAudit();
+}
+
+// ---------- Live follow-up ----------
+const LIVE_REFRESH_MS = 30000;
+let liveLoading = false;
+
+function liveVisible() {
+  return document.getElementById('tab-live').style.display !== 'none';
+}
+
+function minutesText(m) {
+  if (m === null || m === undefined) return '—';
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
+}
+
+function progressBar(percent) {
+  const cls = percent >= 100 ? 'done' : percent >= 50 ? 'mid' : 'low';
+  return `<div class="bar"><div class="bar-fill ${cls}" style="width:${Math.min(100, percent)}%"></div></div>`;
+}
+
+async function loadLive() {
+  if (liveLoading) return;
+  liveLoading = true;
+  try {
+    const d = await apiGet('/api/admin/live.php');
+    renderLiveOverall(d);
+    renderLiveCounters(d);
+    renderLiveStuck(d);
+    renderLiveRacks(d);
+    renderLiveControl(d);
+    document.getElementById('liveUpdated').textContent =
+      `Updated ${d.generated_at.slice(11, 16)} · refreshes every ${LIVE_REFRESH_MS / 1000} s`;
+  } catch (e) {
+    document.getElementById('liveUpdated').innerHTML = `<span class="hint-err">Could not refresh: ${escapeHtml(e.message)}</span>`;
+  } finally {
+    liveLoading = false;
+  }
+}
+
+function renderLiveOverall(d) {
+  const o = d.overall;
+  const eta = o.remaining === 0 ? '✅ All counted'
+    : o.eta_at ? `${o.eta_at} <span class="text-muted">(in ${minutesText(o.eta_minutes)})</span>`
+    : '<span class="text-muted">— no address completed in the last hour</span>';
+  const tiles = [
+    [`${o.counted} / ${o.total}`, 'Addresses counted'],
+    [o.remaining, 'Left to count'],
+    [o.pace_per_hour, 'Addresses / hour (last hour)'],
+    [o.counters_active, 'Counters active now'],
+    [d.control_queue.waiting + d.control_queue.in_progress, 'At Control'],
+    [o.sent_to_control_percent === null ? '—' : o.sent_to_control_percent + ' %', 'Sent to Control'],
+  ];
+  document.getElementById('liveOverall').innerHTML = `
+    <div class="live-progress">
+      <div class="live-percent">${o.percent} %</div>
+      <div style="flex:1">${progressBar(o.percent)}
+        <div class="hint">Estimated finish: <b>${eta}</b> · Final (OK or controlled): ${o.final}</div>
+      </div>
+    </div>
+    <div class="stat-grid live-stats">${tiles.map(([n, l]) => `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('')}</div>`;
+}
+
+function renderLiveCounters(d) {
+  const box = document.getElementById('liveCounters');
+  if (!d.counters.length) { box.innerHTML = '<p class="text-muted">No counters yet.</p>'; return; }
+  const medal = ['🥇', '🥈', '🥉'];
+  const state = (c) => c.state === 'active' ? '<span class="badge badge-match">Active</span>'
+    : c.state === 'idle' ? `<span class="badge badge-diff">Idle ${minutesText(c.idle_minutes)}</span>`
+    : '<span class="badge badge-muted">Not started</span>';
+  box.innerHTML = `<table>
+    <thead><tr><th>#</th><th>Counter</th><th class="num-col">Addresses</th><th class="num-col">Last hour</th><th class="num-col">Lines</th>
+      <th class="num-col">First-time OK</th><th>Now at</th><th>Status</th></tr></thead>
+    <tbody>${d.counters.map((c, i) => `<tr class="${c.state === 'idle' ? 'row-warn' : ''}">
+      <td class="rank">${c.addresses > 0 && i < 3 ? medal[i] : i + 1}</td>
+      <td><b>${escapeHtml(c.name)}</b></td>
+      <td class="num-col"><b>${c.addresses}</b></td>
+      <td class="num-col">${c.last_hour}</td>
+      <td class="num-col">${c.lines}</td>
+      <td class="num-col">${c.ok_percent === null ? '—' : c.ok_percent + ' %'}</td>
+      <td>${c.current_address ? escapeHtml(c.current_address) : '<span class="text-muted">—</span>'}</td>
+      <td>${state(c)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderLiveStuck(d) {
+  const box = document.getElementById('liveStuck');
+  if (!d.stuck.length) {
+    box.innerHTML = `<p class="hint-ok">No stuck address (none in progress without activity for ${d.settings.stuck_minutes} min).</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="hint">Started but no new entry for more than ${d.settings.stuck_minutes} min. Go and check whether the counter needs help.</p>` +
+    d.stuck.map(s => `<div class="count-row"><div class="count-main"><div class="code">${escapeHtml(s.code)}</div>
+      <div class="meta">Rack ${escapeHtml(s.rack)}${s.last_by ? ' · last entry by ' + escapeHtml(s.last_by) : ''}</div></div>
+      <div class="count-side"><span class="badge badge-diff">No activity for ${minutesText(s.idle_minutes)}</span></div></div>`).join('');
+}
+
+function renderLiveRacks(d) {
+  const box = document.getElementById('liveRacks');
+  if (!d.racks.length) { box.innerHTML = '<p class="text-muted">No addresses imported yet.</p>'; return; }
+  box.innerHTML = `<table>
+    <thead><tr><th>Rack</th><th style="min-width:140px">Progress</th><th class="num-col">Counted</th><th class="num-col">Not started</th>
+      <th class="num-col">In progress</th><th class="num-col">At Control</th><th class="num-col">Stuck</th><th class="num-col">Counters</th></tr></thead>
+    <tbody>${d.racks.map(r => `<tr>
+      <td><b>${escapeHtml(r.rack)}</b></td>
+      <td>${progressBar(r.percent)}<div class="hint" style="margin-top:2px">${r.percent} %</div></td>
+      <td class="num-col">${r.counted} / ${r.total}</td>
+      <td class="num-col">${r.not_started}</td>
+      <td class="num-col">${r.in_progress}</td>
+      <td class="num-col">${r.waiting_control}</td>
+      <td class="num-col">${r.stuck ? `<span class="badge badge-diff">${r.stuck}</span>` : 0}</td>
+      <td class="num-col">${r.counters}</td></tr>`).join('')}</tbody></table>
+    <p class="hint">Least advanced racks first. Rack = the part of the address before the first dash (A -01- 1 → A, R09-A-3 → R09).</p>`;
+}
+
+function renderLiveControl(d) {
+  const q = d.control_queue;
+  const items = q.items.slice(0, 15).map(i => `<div class="count-row"><div class="count-main"><div class="code">${escapeHtml(i.code)}</div>
+    <div class="meta">${i.status === 'CONTROL_IN_PROGRESS' ? 'Control in progress' : 'Waiting for Control'}${i.counted_by ? ' · counted by ' + escapeHtml(i.counted_by) : ''}</div></div>
+    <div class="count-side"><div class="meta">waiting</div><b>${minutesText(i.waiting_minutes)}</b></div></div>`).join('');
+  const more = q.items.length > 15 ? `<p class="hint">+ ${q.items.length - 15} more</p>` : '';
+  const ctrl = d.controllers.length
+    ? `<p class="hint">Controlled so far: ${d.controllers.map(c => `${escapeHtml(c.name)} <b>${c.controlled}</b>`).join(' · ')}</p>` : '';
+  document.getElementById('liveControl').innerHTML = `
+    <div class="stat-grid live-stats">
+      <div class="stat"><div class="num">${q.waiting}</div><div class="lbl">Waiting</div></div>
+      <div class="stat"><div class="num">${q.in_progress}</div><div class="lbl">In progress</div></div>
+      <div class="stat"><div class="num">${minutesText(q.oldest_minutes)}</div><div class="lbl">Oldest waiting</div></div>
+    </div>${ctrl}${items || '<p class="hint-ok">Nothing waiting for Control.</p>'}${more}`;
 }
 
 async function loadDashboard() {
