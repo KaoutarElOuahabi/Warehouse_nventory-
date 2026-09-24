@@ -20,7 +20,7 @@ if (!file_exists(__DIR__ . '/../config/config.php') && !Config::hasRuntimeConfig
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Warehouse Inventory — Login</title>
-<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/app.css?v=<?= filemtime(__DIR__ . '/assets/css/app.css') ?>">
 </head>
 <body>
 <div class="container" style="padding-top:15vh">
@@ -36,7 +36,7 @@ if (!file_exists(__DIR__ . '/../config/config.php') && !Config::hasRuntimeConfig
     </form>
   </div>
 </div>
-<script src="/assets/js/common.js"></script>
+<script src="/assets/js/common.js?v=<?= filemtime(__DIR__ . '/assets/js/common.js') ?>"></script>
 <script>
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();

@@ -9,7 +9,7 @@ $user = Auth::requireRole('admin');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Admin — Warehouse Inventory</title>
-<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/app.css?v=<?= filemtime(__DIR__ . '/assets/css/app.css') ?>">
 </head>
 <body>
 <div class="topbar">
@@ -99,7 +99,7 @@ $user = Auth::requireRole('admin');
 </div>
 
 <script src="/assets/vendor/sheetjs/xlsx.full.min.js"></script>
-<script src="/assets/js/common.js"></script>
-<script src="/assets/js/admin.js"></script>
+<script src="/assets/js/common.js?v=<?= filemtime(__DIR__ . '/assets/js/common.js') ?>"></script>
+<script src="/assets/js/admin.js?v=<?= filemtime(__DIR__ . '/assets/js/admin.js') ?>"></script>
 </body>
 </html>

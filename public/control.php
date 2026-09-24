@@ -9,7 +9,7 @@ $user = Auth::requireRole('control', 'admin');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Control — Warehouse Inventory</title>
-<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/app.css?v=<?= filemtime(__DIR__ . '/assets/css/app.css') ?>">
 </head>
 <body>
 <div class="topbar">
@@ -64,7 +64,7 @@ $user = Auth::requireRole('control', 'admin');
   </div>
 
 </div>
-<script src="/assets/js/common.js"></script>
-<script src="/assets/js/control.js"></script>
+<script src="/assets/js/common.js?v=<?= filemtime(__DIR__ . '/assets/js/common.js') ?>"></script>
+<script src="/assets/js/control.js?v=<?= filemtime(__DIR__ . '/assets/js/control.js') ?>"></script>
 </body>
 </html>

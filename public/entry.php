@@ -10,7 +10,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Data Entry — Warehouse Inventory</title>
-<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/app.css?v=<?= filemtime(__DIR__ . '/assets/css/app.css') ?>">
 </head>
 <body>
 <div class="topbar">
@@ -107,7 +107,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
 </div>
 
 <script src="/assets/vendor/html5-qrcode/html5-qrcode.min.js"></script>
-<script src="/assets/js/common.js"></script>
-<script src="/assets/js/entry.js"></script>
+<script src="/assets/js/common.js?v=<?= filemtime(__DIR__ . '/assets/js/common.js') ?>"></script>
+<script src="/assets/js/entry.js?v=<?= filemtime(__DIR__ . '/assets/js/entry.js') ?>"></script>
 </body>
 </html>
