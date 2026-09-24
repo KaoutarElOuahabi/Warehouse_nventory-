@@ -287,7 +287,7 @@ function renderAddressStatus(status, locked) {
 function resetHuForm() {
   document.getElementById('huInput').value = '';
   document.getElementById('huInput').disabled = false;
-  document.getElementById('huMsg').textContent = '';
+  setHuMsg('', '');
   document.getElementById('huNotAvailable').checked = false;
   document.getElementById('pnInput').value = '';
   document.getElementById('pnMsg').textContent = '';
@@ -329,7 +329,7 @@ function getUnitValue() {
 
 function onHuInput(e) {
   lastHuLookup = null;
-  document.getElementById('huMsg').textContent = huFormatError(e.target.value, false) || '';
+  setHuMsg(huFormatError(e.target.value, false) || '', 'err');
   if (huFoundLocked) {
     // HU text changed after a successful lookup: drop the PN/unit of the old HU.
     huFoundLocked = false;
@@ -344,7 +344,7 @@ function onHuInput(e) {
 function onHuNotAvailableToggle() {
   const checked = document.getElementById('huNotAvailable').checked;
   document.getElementById('huInput').disabled = checked;
-  document.getElementById('huMsg').textContent = '';
+  setHuMsg('', '');
   huFoundLocked = false;
   document.getElementById('pnInput').value = '';
   document.getElementById('pnMsg').textContent = '';
@@ -359,24 +359,30 @@ function onHuNotAvailableToggle() {
   }
 }
 
+function setHuMsg(text, kind) {
+  const msg = document.getElementById('huMsg');
+  msg.textContent = text;
+  msg.className = 'hint' + (text ? (kind === 'ok' ? ' hint-ok' : ' hint-err') : '');
+}
+
 async function lookupHu(rawHu) {
   const hu = normalizeHu(rawHu);
   // Enter + blur both fire for the same value; look each value up only once.
   if (!hu || document.getElementById('huNotAvailable').checked || hu === lastHuLookup) return;
   lastHuLookup = hu;
   showBanner('', '');
-  const msg = document.getElementById('huMsg');
   const formatError = huFormatError(rawHu);
   if (formatError) {
-    msg.textContent = formatError;
+    setHuMsg(formatError, 'err');
     return;
   }
-  msg.textContent = '';
+  setHuMsg('', '');
   try {
     const data = await apiPost('/api/entry/scan_hu.php', { hu });
     // The HU was changed while this lookup was running: ignore the old answer.
     if (normalizeHu(document.getElementById('huInput').value) !== hu) return;
     if (data.found) {
+      setHuMsg(`✓ HU ${hu} found in stock — Part Number and unit filled in. Enter the quantity.`, 'ok');
       huFoundLocked = true;
       togglePnMode(false);
       showAutoPnField(data.part_number, false);
@@ -389,7 +395,7 @@ async function lookupHu(rawHu) {
       document.getElementById('pnMsg').textContent = '';
       setUnitField('—', true);
       document.getElementById('pnInput').focus();
-      showBanner('warn', 'HU not found in imported stock. Select the Part Number from the list and enter the quantity.');
+      setHuMsg(`HU ${hu} is NOT in the imported stock. Check the number on the label — if it is correct, choose the Part Number below.`, 'err');
     }
   } catch (e) {
     lastHuLookup = null; // allow a retry of the same HU
