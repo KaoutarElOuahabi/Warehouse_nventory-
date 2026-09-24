@@ -129,34 +129,81 @@ function onPreview() {
   if (!fileInput.files.length) { alert('Choose a file first.'); return; }
   const file = fileInput.files[0];
   parsedFilename = file.name;
+  const isCsv = /\.(csv|txt)$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      // Codes come from the displayed text (keeps leading zeros like "000123"),
-      // quantities from the real cell value (a "2,000"-formatted cell must stay
-      // 2000, not become the text "2,000").
-      const textRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
-      parsedRows = textRows.map((r, i) => {
-        const t = normalizeRow(r);
-        const raw = normalizeRow(rawRows[i] || {});
-        return {
-          address: codeValue(t.address, raw.address),
-          hu: codeValue(t.hu, raw.hu),
-          part_number: codeValue(t.part_number, raw.part_number),
-          unit: String(t.unit ?? '').trim(),
-          quantity: typeof raw.quantity === 'number' ? raw.quantity : String(raw.quantity ?? '').trim(),
-        };
-      });
+      parsedRows = isCsv ? rowsFromCsv(e.target.result) : rowsFromWorkbook(new Uint8Array(e.target.result));
       const data = await apiPost('/api/admin/import.php', { rows: parsedRows, filename: parsedFilename, mode: 'preview' });
       renderPreview(data);
     } catch (err) {
       document.getElementById('importPreview').innerHTML = `<div class="banner err">${escapeHtml(err.message || String(err))}</div>`;
     }
   };
-  reader.readAsArrayBuffer(file);
+  if (isCsv) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+}
+
+function rowsFromWorkbook(bytes) {
+  const wb = XLSX.read(bytes, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  // Codes come from the displayed text (keeps leading zeros like "000123"),
+  // quantities from the real cell value (a "2,000"-formatted cell must stay
+  // 2000, not become the text "2,000").
+  const textRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+  return textRows.map((r, i) => {
+    const t = normalizeRow(r);
+    const raw = normalizeRow(rawRows[i] || {});
+    return {
+      address: codeValue(t.address, raw.address),
+      hu: codeValue(t.hu, raw.hu),
+      part_number: codeValue(t.part_number, raw.part_number),
+      unit: String(t.unit ?? '').trim(),
+      quantity: typeof raw.quantity === 'number' ? raw.quantity : String(raw.quantity ?? '').trim(),
+    };
+  });
+}
+
+// CSV is read as plain text so codes keep their leading zeros (PN 002150030000,
+// HU 0300747731). SAP exports with "," as separator write decimals as "1,2",
+// which splits the quantity into two cells: when Quantity is the last column and
+// a row has exactly one extra numeric cell, the two are joined back into 1.2.
+function rowsFromCsv(text) {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim() !== '');
+  if (!lines.length) return [];
+  const sep = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
+  const split = (line) => {
+    const out = []; let cur = ''; let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+      else if (c === sep && !q) { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out.map(v => v.trim());
+  };
+  const header = split(lines[0]);
+  const qtyIdx = header.findIndex(h => ['quantity', 'qty', 'qte'].includes(h.toLowerCase().replace(/[^a-z0-9]/g, '')));
+  return lines.slice(1).map(line => {
+    let cells = split(line);
+    let merged = null;
+    if (sep === ',' && qtyIdx === header.length - 1 && cells.length === header.length + 1
+        && /^\d+$/.test(cells[qtyIdx]) && /^\d+$/.test(cells[qtyIdx + 1])) {
+      merged = parseFloat(cells[qtyIdx] + '.' + cells[qtyIdx + 1]);
+      cells = cells.slice(0, qtyIdx + 1);
+    }
+    const obj = {};
+    header.forEach((h, i) => { obj[h] = cells[i] ?? ''; });
+    const r = normalizeRow(obj);
+    return {
+      address: String(r.address).trim(),
+      hu: String(r.hu).trim(),
+      part_number: String(r.part_number).trim(),
+      unit: String(r.unit).trim(),
+      quantity: merged !== null ? merged : String(r.quantity).trim(),
+    };
+  });
 }
 
 function normalizeRow(r) {

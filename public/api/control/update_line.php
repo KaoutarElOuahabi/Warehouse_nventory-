@@ -40,7 +40,7 @@ try {
 
             $hu = array_key_exists('hu', $data) ? trim((string)$data['hu']) : (string)($row['hu'] ?? '');
             if ($hu !== '') {
-                validate_hu_format($hu);
+                $hu = validate_hu_format($hu);
                 if ($hu !== (string)$row['hu'] && huActiveAt($pdo, $addressId, $hu)) {
                     Response::error("HU $hu is already recorded at this address.", 409);
                 }
@@ -77,7 +77,7 @@ try {
             require_fields($data, ['part_number', 'quantity']);
             $hu = trim((string)($data['hu'] ?? ''));
             if ($hu !== '') {
-                validate_hu_format($hu);
+                $hu = validate_hu_format($hu);
                 if (huActiveAt($pdo, $addressId, $hu)) {
                     Response::error("HU $hu is already recorded at this address — edit that line instead.", 409);
                 }

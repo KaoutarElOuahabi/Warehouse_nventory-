@@ -21,21 +21,32 @@ function allowsDecimal(unit) {
   return decimalUnits.includes(String(unit || '').toUpperCase());
 }
 
-// Handling Units are always 9 digits starting with 300 (mirrors HU_PATTERN in bootstrap.php).
-const HU_PATTERN = /^300\d{6}$/;
+// Handling Units: 300 + 6 digits or 1000 + 6 digits. Labels/SAP may add "H" or a
+// leading 0 (H300660525, 0300660525) — same HU. Mirrors normalize_hu() in bootstrap.php.
+const HU_PATTERN = /^(300\d{6}|1000\d{6})$/;
+
+function normalizeHu(value) {
+  let v = String(value || '').replace(/\s+/g, '').toUpperCase();
+  if (v.startsWith('H')) v = v.slice(1);
+  if (/^0300\d{6}$/.test(v)) v = v.slice(1);
+  return v;
+}
 
 function isHuCode(value) {
-  return HU_PATTERN.test(String(value || '').trim());
+  return HU_PATTERN.test(normalizeHu(value));
 }
 
 // Error message while typing/submitting an HU, or null if it's fine so far.
 function huFormatError(value, complete = true) {
-  const v = String(value || '').trim();
+  let v = String(value || '').replace(/\s+/g, '').toUpperCase();
   if (!v) return null;
-  if (!/^\d+$/.test(v)) return 'An HU has digits only (9 digits starting with 300). This looks like an address or another code.';
-  if (!'300'.startsWith(v.slice(0, 3))) return 'An HU always starts with 300.';
-  if (v.length > 9) return `An HU has exactly 9 digits — you typed ${v.length}.`;
-  if (complete && !isHuCode(v)) return `An HU has exactly 9 digits — you typed ${v.length}.`;
+  if (v.startsWith('H')) v = v.slice(1);
+  if (!/^\d*$/.test(v)) return 'An HU has digits only (e.g. 300660525, H300660525 or 0300660525). This looks like an address or another code.';
+  if (!v) return null;
+  const fits = ['300', '0300', '1000'].some(p => p.startsWith(v.slice(0, p.length)) || v.startsWith(p));
+  if (!fits) return 'An HU starts with 300, 0300 or 1000.';
+  if (v.length > 10) return `An HU has 9 or 10 digits — you typed ${v.length}.`;
+  if (complete && !isHuCode(v)) return `Incomplete HU: 300 + 6 digits (e.g. 300660525) or 0300/1000 + 6 digits.`;
   return null;
 }
 
@@ -348,13 +359,14 @@ function onHuNotAvailableToggle() {
   }
 }
 
-async function lookupHu(hu) {
+async function lookupHu(rawHu) {
+  const hu = normalizeHu(rawHu);
   // Enter + blur both fire for the same value; look each value up only once.
   if (!hu || document.getElementById('huNotAvailable').checked || hu === lastHuLookup) return;
   lastHuLookup = hu;
   showBanner('', '');
   const msg = document.getElementById('huMsg');
-  const formatError = huFormatError(hu);
+  const formatError = huFormatError(rawHu);
   if (formatError) {
     msg.textContent = formatError;
     return;
@@ -363,7 +375,7 @@ async function lookupHu(hu) {
   try {
     const data = await apiPost('/api/entry/scan_hu.php', { hu });
     // The HU was changed while this lookup was running: ignore the old answer.
-    if (document.getElementById('huInput').value.trim() !== hu) return;
+    if (normalizeHu(document.getElementById('huInput').value) !== hu) return;
     if (data.found) {
       huFoundLocked = true;
       togglePnMode(false);
@@ -468,7 +480,7 @@ function onQuantityInput() {
 
 function currentFormData() {
   const huNotAvailable = document.getElementById('huNotAvailable').checked;
-  const hu = huNotAvailable ? '' : document.getElementById('huInput').value.trim();
+  const hu = huNotAvailable ? '' : normalizeHu(document.getElementById('huInput').value);
   const partNumber = huFoundLocked
     ? document.getElementById('pnAutoField').textContent.trim()
     : document.getElementById('pnInput').value.trim();

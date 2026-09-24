@@ -42,17 +42,35 @@ function require_fields(array $data, array $fields): void
     }
 }
 
-/** Handling Units are always 9 digits starting with 300, e.g. 300660525. Mirrored in entry.js. */
-const HU_PATTERN = '/^300\d{6}$/';
+/**
+ * Handling Units: 300 + 6 digits (e.g. 300660525) or 1000 + 6 digits (e.g. 1000058164).
+ * Labels/SAP may add an "H" prefix or a leading 0 (H300660525, 0300660525): those are the
+ * same HU and are stored in the short form. Mirrored in entry.js (normalizeHu).
+ */
+const HU_PATTERN = '/^(300\d{6}|1000\d{6})$/';
+
+function normalize_hu(string $value): string
+{
+    $v = strtoupper(preg_replace('/\s+/', '', $value));
+    if (strpos($v, 'H') === 0) {
+        $v = substr($v, 1);
+    }
+    if (preg_match('/^0300\d{6}$/', $v)) {
+        $v = substr($v, 1);
+    }
+    return $v;
+}
 
 function is_hu_format(string $value): bool
 {
-    return (bool)preg_match(HU_PATTERN, $value);
+    return (bool)preg_match(HU_PATTERN, normalize_hu($value));
 }
 
-function validate_hu_format(string $hu): void
+/** Returns the HU in its stored (short) form, or stops the request with a clear error. */
+function validate_hu_format(string $hu): string
 {
     if (!is_hu_format($hu)) {
-        Response::error("\"$hu\" is not a Handling Unit. An HU is 9 digits starting with 300, e.g. 300660525.", 422);
+        Response::error("\"$hu\" is not a Handling Unit. An HU is 300 + 6 digits (e.g. 300660525, also H300660525 or 0300660525) or 1000 + 6 digits.", 422);
     }
+    return normalize_hu($hu);
 }

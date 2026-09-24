@@ -35,7 +35,7 @@ if (!$huNotAvailable && $hu === '') {
     Response::error('Handling Unit is required unless "HU NOT AVAILABLE" is checked.', 422);
 }
 if (!$huNotAvailable) {
-    validate_hu_format($hu);
+    $hu = validate_hu_format($hu);
 }
 if ($partNumber === '') {
     Response::error('Part Number is required.', 422);
