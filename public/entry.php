@@ -15,10 +15,13 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
 <body>
 <div class="topbar">
   <div>
-    <div class="title">📦 Inventory Warehouse</div>
+    <div class="title" id="homeTitle" style="cursor:pointer">📦 Inventory Warehouse</div>
     <div class="user"><?= htmlspecialchars($user['full_name']) ?> · Data Entry</div>
   </div>
-  <button class="logout" onclick="doLogout()">Log out</button>
+  <div style="display:flex;gap:6px">
+    <button class="logout" id="homeBtn" style="display:none;color:var(--text);border-color:var(--blue)">🏠 Addresses</button>
+    <button class="logout" onclick="doLogout()">Log out</button>
+  </div>
 </div>
 
 <div class="container" id="app">
@@ -49,7 +52,7 @@ if (php_sapi_name() !== 'cli') { /* still render for control/admin who may want 
     <div class="card">
       <div class="hint mt-0">ADDRESS</div>
       <div class="readonly-field" id="currentAddress" style="font-size:1.3rem"></div>
-      <button class="btn-secondary btn-sm" style="margin-top:8px" onclick="changeAddress()">Change address</button>
+      <button class="btn-secondary btn-block" style="margin-top:10px" id="backToListBtn">← BACK TO ADDRESS LIST</button>
       <div id="addressStatusNote"></div>
     </div>
 

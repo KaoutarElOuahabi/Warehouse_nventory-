@@ -83,6 +83,19 @@ async function isKnownAddressMatch(code) {
   document.getElementById('myAddressesFilter').addEventListener('input', renderMyAddresses);
   loadMyAddresses();
 
+  // Back to the address list: big button, top bar, app title, and the phone's back button.
+  document.getElementById('backToListBtn').addEventListener('click', () => goToAddressList());
+  document.getElementById('homeBtn').addEventListener('click', () => goToAddressList());
+  document.getElementById('homeTitle').addEventListener('click', () => goToAddressList());
+  window.addEventListener('popstate', () => {
+    if (!currentAddressCode) return;
+    if (!leavingViaButton && hasUnsavedLine() && !confirm(UNSAVED_QUESTION)) {
+      history.pushState({ screen: 'entry' }, ''); // stay on the address
+      return;
+    }
+    changeAddress();
+  });
+
   document.getElementById('scanHuBtn').addEventListener('click', () => openCamera('huInput', 'Scan HU barcode', lookupHu));
   document.getElementById('huInput').addEventListener('input', onHuInput);
   document.getElementById('huInput').addEventListener('change', () => lookupHu(document.getElementById('huInput').value.trim()));
@@ -202,6 +215,9 @@ async function setAddress() {
     document.getElementById('addressCard').style.display = 'none';
     document.getElementById('myAddressesCard').style.display = 'none';
     document.getElementById('entryCard').style.display = 'block';
+    document.getElementById('homeBtn').style.display = 'inline-block';
+    if (!(history.state && history.state.screen === 'entry')) history.pushState({ screen: 'entry' }, '');
+    window.scrollTo(0, 0);
     document.getElementById('addressSuggestions').innerHTML = '';
     resetHuForm();
     await refreshCounts();
@@ -211,7 +227,30 @@ async function setAddress() {
   }
 }
 
+const UNSAVED_QUESTION = 'You typed a line that is not confirmed yet. Leave this address without saving it?';
+
+function hasUnsavedLine() {
+  return document.getElementById('entryCard').style.display !== 'none'
+    && (document.getElementById('huInput').value.trim() !== '' || document.getElementById('quantityInput').value.trim() !== '');
+}
+
+// Leaves the address through history when we added an entry for it, so the phone's
+// back button and the on-screen buttons stay in step (popstate calls changeAddress).
+function goToAddressList(skipUnsavedCheck = false) {
+  if (!currentAddressCode) return;
+  if (!skipUnsavedCheck && hasUnsavedLine() && !confirm(UNSAVED_QUESTION)) return;
+  if (history.state && history.state.screen === 'entry') {
+    leavingViaButton = true; // already asked: the popstate handler must not ask again
+    history.back();
+  } else {
+    changeAddress();
+  }
+}
+let leavingViaButton = false;
+
 function changeAddress() {
+  leavingViaButton = false;
+  document.getElementById('homeBtn').style.display = 'none';
   document.getElementById('entryCard').style.display = 'none';
   document.getElementById('addressCard').style.display = 'block';
   document.getElementById('addressInput').value = '';
@@ -219,6 +258,7 @@ function changeAddress() {
   currentAddressCode = null;
   countRows = new Map();
   loadMyAddresses();
+  window.scrollTo(0, 0);
 }
 
 // ---------- My addresses today (quick re-check / reopen) ----------
@@ -674,7 +714,7 @@ async function onCompleteAddress() {
   try {
     const res = await apiPost('/api/entry/complete_address.php', { address_code: currentAddressCode, confirm_empty: confirmEmpty });
     alert(res.message);
-    changeAddress();
+    goToAddressList(true);
   } catch (e) {
     alert(e.message);
   }
