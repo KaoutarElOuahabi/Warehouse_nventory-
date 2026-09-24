@@ -325,6 +325,9 @@ function onHuInput(e) {
     showAutoPnField('—', true);
     setUnitField('—', true);
   }
+  // A full HU needs no Enter/Tab: show its PN from master data right away.
+  const v = e.target.value.trim();
+  if (isHuCode(v)) lookupHu(v);
 }
 
 function onHuNotAvailableToggle() {
@@ -359,6 +362,8 @@ async function lookupHu(hu) {
   msg.textContent = '';
   try {
     const data = await apiPost('/api/entry/scan_hu.php', { hu });
+    // The HU was changed while this lookup was running: ignore the old answer.
+    if (document.getElementById('huInput').value.trim() !== hu) return;
     if (data.found) {
       huFoundLocked = true;
       togglePnMode(false);
@@ -375,6 +380,7 @@ async function lookupHu(hu) {
       showBanner('warn', 'HU not found in imported stock. Select the Part Number from the list and enter the quantity.');
     }
   } catch (e) {
+    lastHuLookup = null; // allow a retry of the same HU
     showBanner('err', e.message);
   }
 }
@@ -479,8 +485,15 @@ function currentFormData() {
 async function onConfirmClick() {
   const btn = document.getElementById('confirmBtn');
   if (btn.disabled) return;
-  const form = currentFormData();
+  let form = currentFormData();
   showBanner('', '');
+
+  // HU typed but not looked up yet: fill its PN from master data before saving.
+  if (!form.hu_not_available && isHuCode(form.hu) && lastHuLookup !== form.hu) {
+    await lookupHu(form.hu);
+    if (!huFoundLocked) return; // unknown HU: the counter picks the PN first
+    form = currentFormData();
+  }
 
   if (!form.hu_not_available && !form.hu) return showBanner('err', 'Scan or enter a Handling Unit, or check "HU NOT AVAILABLE".');
   if (!form.hu_not_available) {
