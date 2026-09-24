@@ -41,7 +41,7 @@ try {
             $hu = array_key_exists('hu', $data) ? trim((string)$data['hu']) : (string)($row['hu'] ?? '');
             if ($hu !== '') {
                 $hu = validate_hu_format($hu);
-                if ($hu !== (string)$row['hu'] && huActiveAt($pdo, $addressId, $hu)) {
+                if ($hu !== normalize_hu((string)$row['hu']) && huActiveAt($pdo, $addressId, $hu)) {
                     Response::error("HU $hu is already recorded at this address.", 409);
                 }
             }
@@ -152,7 +152,7 @@ try {
 
 function huActiveAt(\PDO $pdo, int $addressId, string $hu): bool
 {
-    $stmt = $pdo->prepare('SELECT 1 FROM physical_counts WHERE address_id = :aid AND hu = :hu AND is_deleted = 0 LIMIT 1');
-    $stmt->execute([':aid' => $addressId, ':hu' => $hu]);
+    $stmt = $pdo->prepare('SELECT 1 FROM physical_counts WHERE address_id = ? AND hu IN (' . hu_placeholders(hu_forms($hu)) . ') AND is_deleted = 0 LIMIT 1');
+    $stmt->execute(array_merge([$addressId], hu_forms($hu)));
     return (bool)$stmt->fetchColumn();
 }

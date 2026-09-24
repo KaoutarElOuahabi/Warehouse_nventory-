@@ -61,6 +61,26 @@ function normalize_hu(string $value): string
     return $v;
 }
 
+/**
+ * Every way the same HU can be written (300…, 0300…, H300…, H0300…), for SQL
+ * "hu IN (...)" lookups, so rows saved in any form still match.
+ */
+function hu_forms(string $hu): array
+{
+    $short = normalize_hu($hu);
+    $forms = [$short, 'H' . $short];
+    if (strpos($short, '300') === 0) {
+        array_push($forms, '0' . $short, 'H0' . $short);
+    }
+    return array_values(array_unique($forms));
+}
+
+/** "?,?,?" placeholders for hu_forms(). */
+function hu_placeholders(array $forms): string
+{
+    return implode(',', array_fill(0, count($forms), '?'));
+}
+
 function is_hu_format(string $value): bool
 {
     return (bool)preg_match(HU_PATTERN, normalize_hu($value));

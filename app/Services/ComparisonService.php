@@ -28,7 +28,7 @@ class ComparisonService
 
         $expectedByHu = [];
         foreach ($expectedRows as $row) {
-            $expectedByHu[(string)$row['hu']] = $row;
+            $expectedByHu[normalize_hu((string)$row['hu'])] = $row;
         }
 
         $physicalByHu = [];
@@ -37,7 +37,7 @@ class ComparisonService
             if (!empty($row['hu_not_available']) || $row['hu'] === null || $row['hu'] === '') {
                 $noHuPhysical[] = $row;
             } else {
-                $physicalByHu[(string)$row['hu']] = $row;
+                $physicalByHu[normalize_hu((string)$row['hu'])] = $row;
             }
         }
 
@@ -192,9 +192,9 @@ class ComparisonService
     {
         $stmt = Database::connection()->prepare(
             'SELECT DISTINCT a.code FROM physical_counts pc INNER JOIN addresses a ON a.id = pc.address_id
-             WHERE pc.hu = :hu AND pc.is_deleted = 0 AND pc.address_id <> :aid'
+             WHERE pc.hu IN (' . hu_placeholders(hu_forms($hu)) . ') AND pc.is_deleted = 0 AND pc.address_id <> ?'
         );
-        $stmt->execute([':hu' => $hu, ':aid' => $addressId]);
+        $stmt->execute(array_merge(hu_forms($hu), [$addressId]));
         return array_column($stmt->fetchAll(), 'code');
     }
 

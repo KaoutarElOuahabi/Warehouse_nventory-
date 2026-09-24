@@ -15,14 +15,12 @@ class StockLookupService
     /** Find an HU anywhere in the active imported stock (address-independent scan). */
     public static function findByHu(string $hu): ?array
     {
-        // Stock imported before HU normalization may hold 0300… / H300… forms of the same HU.
-        $short = normalize_hu($hu);
-        $forms = array_values(array_unique([$short, '0' . $short, 'H' . $short, 'H0' . $short, $hu]));
+        $forms = hu_forms($hu);
         $pdo = Database::connection();
         $stmt = $pdo->prepare(
             'SELECT es.* FROM expected_stock es
              INNER JOIN import_batches b ON b.id = es.batch_id AND b.is_active = 1
-             WHERE es.hu IN (' . implode(',', array_fill(0, count($forms), '?')) . ')
+             WHERE es.hu IN (' . hu_placeholders($forms) . ')
              ORDER BY es.id DESC LIMIT 1'
         );
         $stmt->execute($forms);

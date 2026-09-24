@@ -88,9 +88,9 @@ try {
     $existing = null;
     if (!$huNotAvailable && $hu !== '') {
         $stmt = $pdo->prepare(
-            'SELECT * FROM physical_counts WHERE address_id = :aid AND hu = :hu AND is_deleted = 0 LIMIT 1'
+            'SELECT * FROM physical_counts WHERE address_id = ? AND hu IN (' . hu_placeholders(hu_forms($hu)) . ') AND is_deleted = 0 LIMIT 1'
         );
-        $stmt->execute([':aid' => $addressId, ':hu' => $hu]);
+        $stmt->execute(array_merge([$addressId], hu_forms($hu)));
         $existing = $stmt->fetch() ?: null;
     }
 

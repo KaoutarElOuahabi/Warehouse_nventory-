@@ -66,6 +66,18 @@ try {
         fwrite(STDERR, '[migrate] warning: could not add physical_counts uniqueness guard: ' . $e->getMessage() . PHP_EOL);
     }
 
+    // One HU, one stored form: 300xxxxxx (not 0300…/H300…/H0300…), so scans, counts and
+    // the SAP comparison always match. UPDATE IGNORE leaves a count alone if the short
+    // form is already counted at the same address (unique guard). Non-fatal.
+    try {
+        foreach (['expected_stock', 'physical_counts'] as $table) {
+            $pdo->exec("UPDATE IGNORE $table SET hu = SUBSTRING(hu, 2) WHERE hu LIKE 'H%'");
+            $pdo->exec("UPDATE IGNORE $table SET hu = SUBSTRING(hu, 2) WHERE hu REGEXP '^0300[0-9]{6}$'");
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, '[migrate] warning: could not normalize HU values: ' . $e->getMessage() . PHP_EOL);
+    }
+
     echo "Migration complete. Schema is ready for $database.\n";
 } catch (Throwable $e) {
     fwrite(STDERR, '[migrate] ' . $e->getMessage() . PHP_EOL);

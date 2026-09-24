@@ -64,9 +64,9 @@ if (!$huNotAvailable) {
     $stmt = Database::connection()->prepare(
         'SELECT pc.address_id, pc.quantity, pc.unit, a.code FROM physical_counts pc
          INNER JOIN addresses a ON a.id = pc.address_id
-         WHERE pc.hu = :hu AND pc.is_deleted = 0'
+         WHERE pc.hu IN (' . hu_placeholders(hu_forms($hu)) . ') AND pc.is_deleted = 0'
     );
-    $stmt->execute([':hu' => $hu]);
+    $stmt->execute(hu_forms($hu));
     foreach ($stmt->fetchAll() as $row) {
         if ((int)$row['address_id'] === $addressId) {
             $alreadyHere = ['quantity' => (float)$row['quantity'], 'unit' => $row['unit']];
