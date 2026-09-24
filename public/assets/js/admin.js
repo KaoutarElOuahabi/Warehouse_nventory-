@@ -336,14 +336,82 @@ async function viewAddress(code) {
 }
 
 // ---------- Users ----------
+const ROLE_TEXT = { entry: 'Data Entry', control: 'Control', admin: 'Admin' };
+let userRows = [];
+
 async function loadUsers() {
   const data = await apiGet('/api/admin/users.php');
+  userRows = data.users;
   const box = document.getElementById('userList');
-  box.innerHTML = data.users.map(u => `
-    <div class="list-item" style="cursor:default">
-      <span><span class="code">${escapeHtml(u.username)}</span><br><span class="meta">${escapeHtml(u.full_name)} · ${escapeHtml(u.role)}</span></span>
-      <button class="btn-secondary btn-sm" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Deactivate' : 'Activate'}</button>
+  box.innerHTML = userRows.map(u => `
+    <div class="list-item" style="cursor:default;${u.active ? '' : 'opacity:.6'}">
+      <span><span class="code">${escapeHtml(u.username)}</span>${u.active ? '' : ' <span class="badge badge-muted">Inactive</span>'}<br>
+        <span class="meta">${escapeHtml(u.full_name)} · ${escapeHtml(ROLE_TEXT[u.role] || u.role)}</span></span>
+      <span style="display:flex;gap:6px">
+        <button class="btn-primary btn-sm" onclick="editUser(${u.id})">Edit</button>
+        <button class="btn-secondary btn-sm" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Deactivate' : 'Activate'}</button>
+      </span>
     </div>`).join('');
+}
+
+// Easy to read aloud / type on a phone: no 0/O or 1/l/I.
+function generatePassword() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = new Uint32Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
+}
+
+function editUser(id) {
+  const u = userRows.find(x => x.id === id);
+  if (!u) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `<div class="modal">
+    <h3 class="mt-0">Edit user: ${escapeHtml(u.username)}</h3>
+    <label class="hint">Full name</label>
+    <input type="text" id="euName" value="${escapeHtml(u.full_name)}">
+    <label class="hint" style="display:block;margin-top:10px">Role</label>
+    <select id="euRole">
+      ${Object.entries(ROLE_TEXT).map(([v, t]) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${t}</option>`).join('')}
+    </select>
+    <label class="hint" style="display:block;margin-top:10px">New password (leave empty to keep the current one)</label>
+    <div style="display:flex;gap:6px">
+      <input type="text" id="euPass" autocomplete="off" placeholder="min. 6 characters" style="flex:1">
+      <button class="btn-secondary btn-sm" id="euGen" type="button">Generate</button>
+    </div>
+    <div id="euMsg" class="hint hint-err"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-secondary" style="flex:1" id="euCancel">Cancel</button>
+      <button class="btn-primary" style="flex:1" id="euSave">Save</button>
+    </div>
+  </div>`;
+  const close = () => modal.remove();
+  modal.querySelector('#euCancel').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#euGen').addEventListener('click', () => { modal.querySelector('#euPass').value = generatePassword(); });
+  modal.querySelector('#euSave').addEventListener('click', async (ev) => {
+    const full_name = modal.querySelector('#euName').value.trim();
+    const role = modal.querySelector('#euRole').value;
+    const password = modal.querySelector('#euPass').value.trim();
+    const msg = modal.querySelector('#euMsg');
+    if (!full_name) { msg.textContent = 'Full name is required.'; return; }
+    if (password && password.length < 6) { msg.textContent = 'Password must be at least 6 characters.'; return; }
+    const payload = { action: 'update', id, full_name, role };
+    if (password) payload.password = password;
+    ev.currentTarget.disabled = true;
+    try {
+      await apiPost('/api/admin/users.php', payload);
+      close();
+      if (password) alert(`Password changed.\n\nGive this to ${u.full_name} (${u.username}):\n\n${password}`);
+      loadUsers();
+    } catch (e) {
+      msg.textContent = e.message;
+      ev.currentTarget.disabled = false;
+    }
+  });
+  document.body.appendChild(modal);
+  modal.querySelector('#euName').focus();
 }
 
 async function createUser() {
@@ -362,7 +430,11 @@ async function createUser() {
 }
 
 async function toggleUser(id, active) {
-  await apiPost('/api/admin/users.php', { action: 'update', id, active });
+  const u = userRows.find(x => x.id === id);
+  if (!active && !confirm(`Deactivate ${u ? u.username : 'this user'}? They can no longer log in.`)) return;
+  try {
+    await apiPost('/api/admin/users.php', { action: 'update', id, active });
+  } catch (e) { alert(e.message); }
   loadUsers();
 }
 

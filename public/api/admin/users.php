@@ -52,6 +52,11 @@ try {
     if ($method === 'POST' && $action === 'update') {
         require_fields($data, ['id']);
         $id = (int)$data['id'];
+        // An admin must not lock themselves out (no other admin may be left to undo it).
+        if ($id === (int)$user['id']) {
+            if (isset($data['active']) && !$data['active']) Response::error('You cannot deactivate your own account.', 422);
+            if (isset($data['role']) && $data['role'] !== 'admin') Response::error('You cannot remove your own admin role.', 422);
+        }
         $fields = [];
         $params = [':id' => $id];
         if (isset($data['full_name'])) { $fields[] = 'full_name = :fn'; $params[':fn'] = trim((string)$data['full_name']); }
@@ -74,7 +79,12 @@ try {
         $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = :id';
         $pdo->prepare($sql)->execute($params);
 
-        AuditService::log('user', $id, 'user_updated', $user, ['role' => $before['role'], 'active' => $before['active']], $data);
+        // Never write the password itself into the audit trail.
+        $after = array_intersect_key($data, array_flip(['full_name', 'role', 'active']));
+        if (!empty($data['password'])) $after['password_changed'] = true;
+        AuditService::log('user', $id, 'user_updated', $user,
+            ['full_name' => $before['full_name'], 'role' => $before['role'], 'active' => $before['active']], $after,
+            !empty($data['password']) ? "Password reset for {$before['username']}" : null);
         Response::ok();
     }
 

@@ -68,6 +68,18 @@ class Auth
             self::logout();
             return false;
         }
+        // A deactivated user is logged out at once, and a role/name change by the
+        // admin applies immediately instead of at the next login.
+        $stmt = Database::connection()->prepare('SELECT username, full_name, role, active FROM users WHERE id = :id');
+        $stmt->execute([':id' => $_SESSION['user_id']]);
+        $row = $stmt->fetch();
+        if (!$row || !(int)$row['active']) {
+            self::logout();
+            return false;
+        }
+        $_SESSION['username'] = $row['username'];
+        $_SESSION['full_name'] = $row['full_name'];
+        $_SESSION['role'] = $row['role'];
         $_SESSION['last_activity'] = time();
         return true;
     }
