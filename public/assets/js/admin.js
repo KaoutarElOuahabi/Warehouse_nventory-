@@ -209,10 +209,15 @@ function renderPreview(data) {
 
 async function onCommitImport() {
   if (!parsedRows) return;
-  if (!confirm('This replaces the currently active stock snapshot. Continue?')) return;
+  if (!confirm('This REPLACES all previous stock: old HUs, part numbers and addresses not in this file are removed. Continue?')) return;
   try {
     const res = await apiPost('/api/admin/import.php', { rows: parsedRows, filename: parsedFilename, mode: 'commit' });
-    alert(`Imported ${res.imported_rows} stock row(s) and ${res.empty_bins} empty bin(s). ${res.error_count} row(s) rejected.`);
+    let msg = `Imported ${res.imported_rows} stock row(s) and ${res.empty_bins} empty bin(s). ${res.error_count} row(s) rejected.`
+      + `\n${res.addresses_removed} old address(es) removed.`;
+    if (res.addresses_kept_with_counts) {
+      msg += `\n${res.addresses_kept_with_counts} old address(es) kept because they already have counts — use "Reset counting cycle" first to remove them too.`;
+    }
+    alert(msg);
     document.getElementById('commitBtn').style.display = 'none';
     document.getElementById('importPreview').innerHTML = '';
     document.getElementById('importFile').value = '';

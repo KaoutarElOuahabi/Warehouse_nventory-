@@ -56,6 +56,7 @@ $user = Auth::requireRole('admin');
       <p class="hint">Required columns (any order, header row required): <b>Address, HU, Part Number, Unit, Quantity</b>. Accepts .xlsx, .xls, .csv.
         A row with only an Address (HU/PN/Unit/Qty empty) registers an <b>empty bin</b>, so it can be counted too.
         <a href="/templates/stock_import_template.csv" download>Download template</a></p>
+      <p class="hint">A new upload <b>replaces</b> the previous stock completely: HUs, part numbers and addresses that are not in the new file are removed (addresses that already have counts are kept).</p>
       <input type="file" id="importFile" accept=".xlsx,.xls,.csv">
       <button class="btn-secondary btn-block" style="margin-top:10px" id="previewBtn">Preview</button>
       <div id="importPreview"></div>

@@ -52,6 +52,10 @@ foreach ($rows as $r) {
     $qtyRaw = $r['quantity'] ?? null;
     $qtyBlank = $qtyRaw === null || (is_string($qtyRaw) && trim($qtyRaw) === '');
 
+    if (is_hu_format($address)) {
+        $errors[] = "Row $lineNo: Address \"$address\" looks like an HU number — check the column order in the file.";
+        continue;
+    }
     if ($hu === '' && $pn === '' && $unitRaw === '' && $qtyBlank) {
         if ($address !== '') {
             $emptyBins[$address] = true;
@@ -118,11 +122,35 @@ try {
     $pdo = Database::connection();
     $pdo->beginTransaction();
 
-    // Replace the previous active stock snapshot instead of accumulating stale rows.
-    $pdo->exec(
-        'DELETE FROM expected_stock
-         WHERE batch_id IN (SELECT id FROM import_batches WHERE is_active = 1)'
-    );
+    // The new file fully replaces the previous stock: expected stock, part master and
+    // the address list. Only the latest file is valid for data entry.
+    $pdo->exec('DELETE FROM expected_stock');
+    $pdo->exec('DELETE FROM part_master');
+
+    // Drop addresses that are not in the new file, except bins that already hold
+    // live counts — deleting those would silently wipe counting work (counts cascade).
+    $newCodes = array_fill_keys(array_merge(array_column($clean, 'address'), array_keys($emptyBins)), true);
+    $removeIds = [];
+    $keptWithCounts = 0;
+    $existing = $pdo->query(
+        'SELECT a.id, a.code,
+                (SELECT COUNT(*) FROM physical_counts pc WHERE pc.address_id = a.id AND pc.is_deleted = 0) AS live_counts
+         FROM addresses a'
+    )->fetchAll();
+    foreach ($existing as $a) {
+        if (isset($newCodes[$a['code']])) {
+            continue;
+        }
+        if ((int)$a['live_counts'] > 0) {
+            $keptWithCounts++;
+            continue;
+        }
+        $removeIds[] = (int)$a['id'];
+    }
+    foreach (array_chunk($removeIds, 500) as $chunk) {
+        $pdo->exec('DELETE FROM physical_counts WHERE address_id IN (' . implode(',', $chunk) . ')');
+        $pdo->exec('DELETE FROM addresses WHERE id IN (' . implode(',', $chunk) . ')');
+    }
 
     // Keep the historical batch record but leave only the latest import as the active snapshot.
     $pdo->exec("UPDATE import_batches SET is_active = 0 WHERE is_active = 1");
@@ -179,12 +207,16 @@ try {
 
 AuditService::log('import_batch', $batchId, 'import_committed', $user, null, [
     'filename' => $filename, 'row_count' => count($clean), 'empty_bins' => count($emptyBins), 'error_count' => count($errors),
-], "Imported {$filename} — " . count($clean) . ' rows, ' . count($emptyBins) . ' empty bins');
+    'addresses_removed' => count($removeIds), 'addresses_kept_with_counts' => $keptWithCounts,
+], "Imported {$filename} — " . count($clean) . ' rows, ' . count($emptyBins) . ' empty bins, '
+    . count($removeIds) . ' old addresses removed');
 
 Response::ok([
     'batch_id' => $batchId,
     'imported_rows' => count($clean),
     'empty_bins' => count($emptyBins),
+    'addresses_removed' => count($removeIds),
+    'addresses_kept_with_counts' => $keptWithCounts,
     'error_count' => count($errors),
     'errors' => array_slice($errors, 0, 100),
 ]);
