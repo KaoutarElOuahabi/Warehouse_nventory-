@@ -11,6 +11,7 @@ let parsedFilename = null;
   document.getElementById('previewBtn').addEventListener('click', onPreview);
   document.getElementById('commitBtn').addEventListener('click', onCommitImport);
   document.getElementById('statusFilter').addEventListener('change', loadAddresses);
+  document.getElementById('addressSearch').addEventListener('input', renderAddresses);
   document.getElementById('exportResultsBtn').addEventListener('click', exportResultsXlsx);
 
   await loadDashboard();
@@ -229,16 +230,41 @@ async function onCommitImport() {
 }
 
 // ---------- Addresses ----------
+let addressRows = [];
+const ADDRESS_STATUS_TEXT = {
+  NOT_STARTED: 'Not started', IN_PROGRESS: 'In progress', COMPLETED_OK: 'Completed - OK',
+  COMPLETED_CONTROL_REQUIRED: 'Control required', CONTROL_IN_PROGRESS: 'Control in progress', CONTROLLED: 'Controlled',
+};
+
 async function loadAddresses() {
   const status = document.getElementById('statusFilter').value;
   const data = await apiGet('/api/admin/addresses.php' + (status ? '?status=' + status : ''));
+  addressRows = data.addresses;
+  renderAddresses();
+}
+
+// Each row shows what the bin holds in SAP (active import) and what was counted,
+// so wrong or old addresses stand out without opening every one.
+function renderAddresses() {
+  const q = document.getElementById('addressSearch').value.trim().toLowerCase();
+  const rows = q ? addressRows.filter(a => a.code.toLowerCase().includes(q)) : addressRows;
+  const notInFile = addressRows.filter(a => !a.in_stock_file).length;
+  document.getElementById('addressSummary').innerHTML =
+    `${rows.length} of ${addressRows.length} address(es)` +
+    (notInFile ? ` · <span class="hint-err">${notInFile} not in the current stock file</span>` : '');
   const box = document.getElementById('addressList');
-  if (!data.addresses.length) { box.innerHTML = '<div class="card text-muted center">No addresses.</div>'; return; }
-  box.innerHTML = data.addresses.map(a => `
+  if (!rows.length) { box.innerHTML = '<div class="card text-muted center">No addresses.</div>'; return; }
+  box.innerHTML = rows.map(a => {
+    const sap = a.sap_hus ? `SAP: ${a.sap_hus} HU · ${a.sap_pns} PN` : (a.in_stock_file ? 'SAP: empty bin' : '');
+    const counted = a.counted_lines ? `Counted: ${a.counted_lines} line(s)` : 'Not counted yet';
+    const warn = a.in_stock_file ? '' : ' <span class="badge badge-missing">Not in stock file</span>';
+    return `
     <div class="list-item" onclick="viewAddress('${escapeHtml(a.code)}')">
-      <span class="code">${escapeHtml(a.code)}</span>
-      <span class="meta">${escapeHtml(a.status)}</span>
-    </div>`).join('');
+      <span><span class="code">${escapeHtml(a.code)}</span>${warn}<br>
+        <span class="meta">${escapeHtml([sap, counted].filter(Boolean).join(' · '))}</span></span>
+      <span class="meta">${escapeHtml(ADDRESS_STATUS_TEXT[a.status] || a.status)}</span>
+    </div>`;
+  }).join('');
 }
 
 async function viewAddress(code) {
@@ -247,13 +273,14 @@ async function viewAddress(code) {
       <td>${escapeHtml(l.hu || '(no HU)')}</td>
       <td>${l.expected_quantity !== null ? escapeHtml(l.expected_part_number) + ' — ' + escapeHtml(formatQty(l.expected_quantity)) + ' ' + escapeHtml(l.expected_unit) : '—'}</td>
       <td>${l.physical_quantity !== null ? escapeHtml(l.physical_part_number) + ' — ' + escapeHtml(formatQty(l.physical_quantity)) + ' ' + escapeHtml(l.physical_unit) : '—'}</td>
-      <td>${escapeHtml(l.status)}${l.action ? `<div class="hint">${escapeHtml(l.action)}</div>` : ''}</td>
+      <td>${escapeHtml(STATUS_TEXT[l.status] || l.status)}${l.action ? `<div class="hint">${escapeHtml(l.action)}</div>` : ''}</td>
     </tr>`).join('');
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.innerHTML = `<div class="modal" style="max-width:700px">
-    <h3 class="mt-0">${escapeHtml(code)} — ${escapeHtml(data.address.status)}</h3>
-    <table><thead><tr><th>HU</th><th>Expected</th><th>Physical</th><th>Status</th></tr></thead><tbody>${lines}</tbody></table>
+    <h3 class="mt-0">${escapeHtml(code)} — ${escapeHtml(ADDRESS_STATUS_TEXT[data.address.status] || data.address.status)}</h3>
+    ${data.lines.length ? '' : '<p class="text-muted">No SAP stock and nothing counted at this address.</p>'}
+    <table><thead><tr><th>HU</th><th>SAP (PN — qty)</th><th>Counted (PN — qty)</th><th>Status</th></tr></thead><tbody>${lines}</tbody></table>
     <button class="btn-secondary btn-block" style="margin-top:14px">Close</button>
   </div>`;
   modal.querySelector('button').addEventListener('click', () => modal.remove());

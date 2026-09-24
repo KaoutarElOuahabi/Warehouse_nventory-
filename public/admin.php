@@ -75,6 +75,8 @@ $user = Auth::requireRole('admin');
         <option value="CONTROL_IN_PROGRESS">Control in progress</option>
         <option value="CONTROLLED">Controlled</option>
       </select>
+      <input type="text" id="addressSearch" placeholder="Search address" autocomplete="off" style="margin-top:10px">
+      <div class="hint" id="addressSummary"></div>
     </div>
     <div id="addressList"></div>
   </div>

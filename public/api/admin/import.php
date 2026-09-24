@@ -193,7 +193,8 @@ try {
         $upsertPart->execute([':pn' => $row['part_number'], ':unit' => $row['unit'], ':now' => $now]);
     }
     foreach (array_keys($emptyBins) as $bin) {
-        AddressService::getOrCreate($bin);
+        $addr = AddressService::getOrCreate($bin);
+        AddressService::setStatus((int)$addr['id'], $addr['status'], ['known_in_stock' => 1]);
     }
 
     $pdo->commit();
